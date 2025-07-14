@@ -231,7 +231,23 @@ Namespace CreoPublisherApp.ViewModels
                 If _currentPage <> value Then
                     _currentPage = value
                     OnPropertyChanged()
+                    CurrentPageInput = value.ToString() ' Keep textbox in sync
                     UpdatePagedFiles()
+                End If
+            End Set
+        End Property
+        Private _currentPageInput As String = "1"
+        Public Property CurrentPageInput As String
+            Get
+                Return _currentPageInput
+            End Get
+            Set(value As String)
+                If _currentPageInput <> value Then
+                    _currentPageInput = value
+                    OnPropertyChanged()
+
+                    ' Optional: Parse immediately if you want live updates
+                    'TryGoToPage()
                 End If
             End Set
         End Property
@@ -294,6 +310,11 @@ Namespace CreoPublisherApp.ViewModels
                                                                             CurrentPage = 1
                                                                             UpdatePagedFiles()
                                                                         End Sub)
+        Public ReadOnly Property GoToPageCommand As ICommand
+            Get
+                Return New RelayCommand(AddressOf TryGoToPage)
+            End Get
+        End Property
 
 
 
@@ -683,6 +704,18 @@ String.Join(vbCrLf, conflictFiles), "Skipped Files", MessageBoxButton.OK, Messag
 
             OnPropertyChanged(NameOf(CurrentPage))
             OnPropertyChanged(NameOf(TotalPages))
+        End Sub
+        Private Sub TryGoToPage()
+            Dim pageNum As Integer
+            If Integer.TryParse(CurrentPageInput, pageNum) Then
+                If pageNum >= 1 AndAlso pageNum <= TotalPages Then
+                    CurrentPage = pageNum
+                Else
+                    MessageBox.Show($"Page number must be between 1 and {TotalPages}.", "Invalid Page", MessageBoxButton.OK, MessageBoxImage.Warning)
+                End If
+            Else
+                MessageBox.Show("Please enter a valid numeric page number.", "Invalid Input", MessageBoxButton.OK, MessageBoxImage.Warning)
+            End If
         End Sub
 
 

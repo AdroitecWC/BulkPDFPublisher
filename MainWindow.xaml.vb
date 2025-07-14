@@ -101,6 +101,15 @@ Namespace CreoPublisherApp
         Private Sub Button_Click(sender As Object, e As RoutedEventArgs)
 
         End Sub
-        Private isDarkTheme As Boolean = False
+
+        Private Sub PageNumberTextBox_KeyDown(sender As Object, e As KeyEventArgs)
+            If e.Key = Key.Enter Then
+                Dim viewModel = TryCast(DataContext, MainViewModel)
+                If viewModel IsNot Nothing AndAlso viewModel.GoToPageCommand.CanExecute(Nothing) Then
+                    viewModel.GoToPageCommand.Execute(Nothing)
+                End If
+            End If
+        End Sub
+
     End Class
 End Namespace
