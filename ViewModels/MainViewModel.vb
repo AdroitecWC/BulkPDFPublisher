@@ -514,7 +514,7 @@ Namespace CreoPublisherApp.ViewModels
                     filesToExport.Add(file)
                 End If
             Next
-            'It the user skips any files then it will show skipped files in the messagebox
+            'It the user skips any files then it will show skipped files in  the messagebox
             If conflictFiles.Any() Then
                 MessageBox.Show("The following files were skipped due to overwrite being declined:" & vbCrLf &
 String.Join(vbCrLf, conflictFiles), "Skipped Files", MessageBoxButton.OK, MessageBoxImage.Warning)
