@@ -5,8 +5,7 @@
         Title="Creo PDF Batch Publisher" Height="720" Width="960"
         WindowStartupLocation="CenterScreen"
         MinWidth="800" MinHeight="600"
-      
->
+       >
     <Window.Resources>
         <!-- Style for TextBoxes with black border and larger size -->
         <Style x:Key="FilePathTextBoxStyle" TargetType="TextBox">
@@ -161,21 +160,28 @@
             <RowDefinition Height="120"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-
+       
         <!-- Top bar -->
-        <DockPanel Grid.Row="0" Margin="0,0,0,10" HorizontalAlignment="Right">
+        <DockPanel Grid.Row="0" Margin="0,0,0,10" LastChildFill="False">
+            <!-- Company Logo Left -->
+            <Image Source="pack://application:,,,/Resources/logo.png"
+           Height="60"
+           Margin="0,0,10,0"
+           DockPanel.Dock="Left"
+           Stretch="Uniform"
+           VerticalAlignment="Center"/>
+
             <!-- Help Button -->
             <Button Width="35" ToolTip=" How to drag and drop files into the application." Height="35" Click="ShowDragDropInstructions" DockPanel.Dock="Right" Margin="0,0,8,0">
                 <Image Source="pack://application:,,,/Resources/help.png" Stretch="UniformToFill"/>
             </Button>
 
             <!-- Settings Button -->
-            <Button  Width="35" Height="35" ToolTip="Open export and application settings." Command="{Binding OpenSettingsWindowCommand}" DockPanel.Dock="Right">
-                <Image Source="pack://application:,,,/Resources/gear.png"  Stretch="UniformToFill"/>
+            <Button Width="35" Height="35" ToolTip="Open export and application settings." Command="{Binding OpenSettingsWindowCommand}" DockPanel.Dock="Right">
+                <Image Source="pack://application:,,,/Resources/gear.png" Stretch="UniformToFill"/>
             </Button>
-           
-
         </DockPanel>
+
         <!-- Input Folder -->
         <Grid Grid.Row="1" Margin="0,0,0,8">
             <Grid.ColumnDefinitions>

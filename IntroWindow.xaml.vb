@@ -2,17 +2,28 @@
     Public Class IntroWindow
         Inherits Window
 
-        Private Sub ContinueButton_Click(sender As Object, e As RoutedEventArgs)
-            Dim mainWindow = New MainWindow()
+        'Private Sub ContinueButton_Click(sender As Object, e As RoutedEventArgs)
+        '    Dim mainWindow = New MainWindow()
 
-            ' When MainWindow closes, also close IntroWindow
-            AddHandler mainWindow.Closed, Sub()
-                                              Me.Close() ' this will close IntroWindow when MainWindow closes
-                                          End Sub
+        '    ' When MainWindow closes, also close IntroWindow
+        '    AddHandler mainWindow.Closed, Sub()
+        '                                      Me.Close() ' this will close IntroWindow when MainWindow closes
+        '                                  End Sub
 
+        '    mainWindow.Show()
+
+        '    Me.Hide() ' hide IntroWindow but keep it alive
+        'End Sub
+        Private Async Sub Window_Loaded(sender As Object, e As RoutedEventArgs)
+            ' Optional: Simulate loading delay
+            Await Task.Delay(4000)
+
+            ' Show MainWindow
+            Dim mainWindow As New MainWindow()
             mainWindow.Show()
 
-            Me.Hide() ' hide IntroWindow but keep it alive
+            ' Close IntroWindow
+            Me.Close()
         End Sub
     End Class
 End Namespace

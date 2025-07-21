@@ -13,7 +13,7 @@ Namespace CreoPublisherApp
         Private ReadOnly viewModel As MainViewModel
         ' Keep a reference to the fadeOut Completed handler for removal
         Private fadeOutCompletedHandler As EventHandler
-
+        Private isDarkTheme As Boolean = False
         Public Sub New()
             InitializeComponent()
             viewModel = New MainViewModel()
@@ -110,6 +110,5 @@ Namespace CreoPublisherApp
                 End If
             End If
         End Sub
-
     End Class
 End Namespace

@@ -217,6 +217,7 @@ Namespace CreoPublisherApp.ViewModels
                 End If
             End Set
         End Property
+
         Public ReadOnly Property IsCliMode As Boolean
             Get
                 Return Application.Current Is Nothing OrElse Application.Current.MainWindow Is Nothing

@@ -16,6 +16,7 @@
     <None Remove="Resources\folder-save.png" />
     <None Remove="Resources\gear.png" />
     <None Remove="Resources\help.png" />
+    <None Remove="Resources\logo.png" />
     <None Remove="Resources\upload.png" />
   </ItemGroup>
 
@@ -85,6 +86,9 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Resource>
     <Resource Include="Resources\help.png">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="Resources\logo.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Resource>
     <Resource Include="Resources\upload.png">
