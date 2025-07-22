@@ -152,14 +152,23 @@
           Drop="Grid_Drop">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
+            <!-- Top Bar -->
             <RowDefinition Height="Auto"/>
+            <!-- Input Folder -->
             <RowDefinition Height="Auto"/>
+            <!-- Input Files -->
             <RowDefinition Height="Auto"/>
+            <!-- Output Folder -->
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*" />
+            <!-- Filters -->
+            <RowDefinition Height="*"/>
+            <!-- DataGrid: Takes all available space -->
             <RowDefinition Height="Auto"/>
+            <!-- Pagination -->
+            <RowDefinition Height="Auto"/>
+            <!-- Action Buttons -->
             <RowDefinition Height="120"/>
-            <RowDefinition Height="Auto"/>
+            <!-- Log (Fixed height!) -->
         </Grid.RowDefinitions>
 
         <!-- Top bar -->
@@ -343,38 +352,73 @@
               RowHeight="34"
               FontSize="13"
               GridLinesVisibility="None"
-              AlternatingRowBackground="#F7F7F7"
-              >
+              AlternatingRowBackground="#F7F7F7">
+
+                <!-- Styles -->
                 <DataGrid.Resources>
+                    <!-- Header center align -->
                     <Style x:Key="CenterHeaderStyle" TargetType="DataGridColumnHeader">
                         <Setter Property="HorizontalContentAlignment" Value="Center"/>
                     </Style>
+
+                    <!-- TextBlock cell center align -->
+                    <Style x:Key="CenterTextCellStyle" TargetType="TextBlock">
+                        <Setter Property="TextAlignment" Value="Center"/>
+                        <Setter Property="HorizontalAlignment" Value="Center"/>
+                        <Setter Property="VerticalAlignment" Value="Center"/>
+                    </Style>
+
+                    <!-- CheckBox cell center align -->
+                    <Style x:Key="CenterCheckBoxCellStyle" TargetType="CheckBox">
+                        <Setter Property="HorizontalAlignment" Value="Center"/>
+                        <Setter Property="VerticalAlignment" Value="Center"/>
+                    </Style>
                 </DataGrid.Resources>
+
                 <DataGrid.Columns>
-                    <!-- Fixed width for checkbox -->
+                    <!-- Checkbox -->
                     <DataGridCheckBoxColumn Binding="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
-                            Header="Select" Width="60" />
+                                    Header="Select" Width="60"
+                                    HeaderStyle="{StaticResource CenterHeaderStyle}"
+                                    ElementStyle="{StaticResource CenterCheckBoxCellStyle}" />
 
-                    <!-- Proportional widths for rest -->
-                    <DataGridTextColumn Header="File Name" Binding="{Binding FileName}" Width="2*" />
-                    <DataGridTextColumn Header="Rename PDF(Double Click)" Binding="{Binding CustomPdfName, Mode=TwoWay}" Width="2*" />
-                    <DataGridTextColumn Header="Created Date" Binding="{Binding CreatedDate}" Width="1.5*" />
-                    <DataGridTextColumn Header="Modified Date" Binding="{Binding ModifiedDate}" Width="1.5*" />
+                    <!-- File Name -->
+                    <DataGridTextColumn Header="File Name" Binding="{Binding FileName}" Width="*" 
+                                HeaderStyle="{StaticResource CenterHeaderStyle}"
+                                ElementStyle="{StaticResource CenterTextCellStyle}" />
 
-                    <!-- Fixed small width for Size -->
-                    <DataGridTextColumn Header="Size" Binding="{Binding FileSize}" Width="90"/>
+                    <!-- Rename -->
+                    <DataGridTextColumn Header="Rename PDF(Double Click)" Binding="{Binding CustomPdfName, Mode=TwoWay}" Width="1.5*" 
+                                HeaderStyle="{StaticResource CenterHeaderStyle}"
+                                ElementStyle="{StaticResource CenterTextCellStyle}" />
 
-                    <!-- Wider status column -->
-                    <DataGridTemplateColumn Header="Status" Width="2*">
+                    <!-- Created Date -->
+                    <DataGridTextColumn Header="Created Date" Binding="{Binding CreatedDate}" Width="1.2*" 
+                                HeaderStyle="{StaticResource CenterHeaderStyle}"
+                                ElementStyle="{StaticResource CenterTextCellStyle}" />
+
+                    <!-- Modified Date -->
+                    <DataGridTextColumn Header="Modified Date" Binding="{Binding ModifiedDate}" Width="1.2*" 
+                                HeaderStyle="{StaticResource CenterHeaderStyle}"
+                                ElementStyle="{StaticResource CenterTextCellStyle}" />
+
+                    <!-- File Size -->
+                    <DataGridTextColumn Header="Size" Binding="{Binding FileSize}" Width="80"
+                                HeaderStyle="{StaticResource CenterHeaderStyle}"
+                                ElementStyle="{StaticResource CenterTextCellStyle}" />
+
+                    <!-- Status -->
+                    <DataGridTemplateColumn Header="Status" Width="1*" HeaderStyle="{StaticResource CenterHeaderStyle}">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding Status}" 
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"
-                           FontWeight="Bold">
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   FontWeight="Bold">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
                                             <Setter Property="Foreground" Value="Black"/>
+                                            <Setter Property="TextAlignment" Value="Center"/>
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding Status}" Value="Success">
                                                     <Setter Property="Foreground" Value="Green"/>
