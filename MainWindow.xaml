@@ -142,6 +142,7 @@
                              Storyboard.TargetProperty="Opacity"
                              From="0.7" To="1" Duration="0:0:1" />
         </Storyboard>
+         
  
     </Window.Resources>
 
@@ -160,7 +161,7 @@
             <RowDefinition Height="120"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-       
+
         <!-- Top bar -->
         <DockPanel Grid.Row="0" Margin="0,0,0,10" LastChildFill="False">
             <!-- Company Logo Left -->
@@ -344,14 +345,53 @@
               GridLinesVisibility="None"
               AlternatingRowBackground="#F7F7F7"
               >
+                <DataGrid.Resources>
+                    <Style x:Key="CenterHeaderStyle" TargetType="DataGridColumnHeader">
+                        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                    </Style>
+                </DataGrid.Resources>
                 <DataGrid.Columns>
-                    <DataGridCheckBoxColumn Binding="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Header="Select" Width="60" />
-                    <DataGridTextColumn Header="File Name" Binding="{Binding FileName}" Width="*"/>
-                    <DataGridTextColumn Header="Rename PDF(Double Click)" Binding="{Binding CustomPdfName, Mode=TwoWay}" Width="*"/>
-                    <DataGridTextColumn Header="Created Date" Binding="{Binding CreatedDate}" Width="140"/>
-                    <DataGridTextColumn Header="Modified Date" Binding="{Binding ModifiedDate}" Width="140"/>
+                    <!-- Fixed width for checkbox -->
+                    <DataGridCheckBoxColumn Binding="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
+                            Header="Select" Width="60" />
+
+                    <!-- Proportional widths for rest -->
+                    <DataGridTextColumn Header="File Name" Binding="{Binding FileName}" Width="2*" />
+                    <DataGridTextColumn Header="Rename PDF(Double Click)" Binding="{Binding CustomPdfName, Mode=TwoWay}" Width="2*" />
+                    <DataGridTextColumn Header="Created Date" Binding="{Binding CreatedDate}" Width="1.5*" />
+                    <DataGridTextColumn Header="Modified Date" Binding="{Binding ModifiedDate}" Width="1.5*" />
+
+                    <!-- Fixed small width for Size -->
                     <DataGridTextColumn Header="Size" Binding="{Binding FileSize}" Width="90"/>
-                    <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100"/>
+
+                    <!-- Wider status column -->
+                    <DataGridTemplateColumn Header="Status" Width="2*">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Status}" 
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           FontWeight="Bold">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="Black"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Status}" Value="Success">
+                                                    <Setter Property="Foreground" Value="Green"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Status}" Value="Error">
+                                                    <Setter Property="Foreground" Value="Red"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Status}" Value="File Exists">
+                                                    <Setter Property="Foreground" Value="Blue"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
                 </DataGrid.Columns>
             </DataGrid>
         </Border>
@@ -409,14 +449,11 @@
         <Border Grid.Row="7" Margin="0,10,0,8" Padding="10"
         BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="8" Background="#F8F8F8">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" >
-                <Button Content="Select All" Command="{Binding SelectAllCommand}" 
-                ToolTip="Select all the files." Style="{StaticResource RoundedButtonStyle}" 
-                 Foreground="White"/>
-
-                <Button Content="Deselect All" Command="{Binding DeselectAllCommand}" 
-                ToolTip="Deselect all the selected files." Style="{StaticResource RoundedButtonStyle}" 
-                 Foreground="White"/>
-
+                <Button Content= "{Binding SelectDeselectButtonText}" 
+            Command="{Binding ToggleSelectCommand}" 
+                ToolTip="Select or deselect all files." 
+            Style="{StaticResource RoundedButtonStyle}" 
+                Foreground="White" />
                 <Button Content="Invert Selection" Command="{Binding InvertSelectionCommand}" 
                 ToolTip="Invert the files." Style="{StaticResource RoundedButtonStyle}" 
                  Foreground="White"/>
@@ -428,12 +465,27 @@
                         <TextBlock Text="Publish"/>
                     </StackPanel>
                 </Button>
+                <CheckBox Content="Merge into Single PDF"
+          IsChecked="{Binding IsMergeEnabled}"
+          Margin="10"
+          FontWeight="Bold"/>
+
             </StackPanel>
         </Border>
 
         <!-- Log -->
-        <TextBox Grid.Row="8" Text="{Binding Log}" IsReadOnly="True" VerticalScrollBarVisibility="Auto"
-                 HorizontalScrollBarVisibility="Auto" TextWrapping="Wrap" FontFamily= "Calibri" FontWeight="Heavy" FontSize="15" Style="{StaticResource FilePathTextBoxStyle}"/>
+        <TextBox Grid.Row="8"
+         Text="{Binding Log}"
+         IsReadOnly="True"
+         VerticalScrollBarVisibility="Auto"
+         HorizontalScrollBarVisibility="Auto"
+         TextWrapping="Wrap"
+         FontFamily="Consolas"
+         FontWeight="Normal"
+         FontSize="14"
+         Padding="10"
+         Height="Auto"
+         Style="{StaticResource LogTextBoxStyle}" />
 
         <!-- Drag & Drop Overlay -->
         <TextBlock x:Name="DragDropOverlay"

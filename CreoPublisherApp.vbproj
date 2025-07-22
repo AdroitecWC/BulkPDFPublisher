@@ -70,6 +70,7 @@
 
   <ItemGroup>
     <PackageReference Include="Ookii.Dialogs.Wpf" Version="5.0.1" />
+    <PackageReference Include="PDFsharp" Version="6.2.0" />
   </ItemGroup>
 
   <ItemGroup>

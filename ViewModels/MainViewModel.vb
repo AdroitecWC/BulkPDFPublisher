@@ -1,14 +1,15 @@
 ﻿Imports System.Collections.ObjectModel
 Imports System.ComponentModel
 Imports System.IO
+Imports System.Linq
 Imports System.Runtime.CompilerServices
+Imports System.Windows ' For MessageBox and Window
 Imports System.Windows.Data
+Imports System.Windows.Forms.VisualStyles.VisualStyleElement
 Imports System.Windows.Input
 Imports Microsoft.Win32
 Imports Ookii.Dialogs.Wpf
-Imports System.Linq
-Imports System.Windows ' For MessageBox and Window
-
+Imports System.Windows.Media
 Namespace CreoPublisherApp.ViewModels
 
     Public Class MainViewModel
@@ -29,7 +30,7 @@ Namespace CreoPublisherApp.ViewModels
         Private _isAllSelected As Boolean = False
         Private _selectDeselectButtonText As String = "Select All"
         Private _searchText As String = String.Empty
-
+        Private _isMergeEnabled As Boolean = False
         ' Pagination Variables Declaration 
         Private _currentPage As Integer = 1
         Private _pageSize As Integer = 10
@@ -223,6 +224,16 @@ Namespace CreoPublisherApp.ViewModels
                 Return Application.Current Is Nothing OrElse Application.Current.MainWindow Is Nothing
             End Get
         End Property
+
+        Public Property IsMergeEnabled As Boolean
+            Get
+                Return _isMergeEnabled
+            End Get
+            Set(value As Boolean)
+                _isMergeEnabled = value
+                OnPropertyChanged(NameOf(IsMergeEnabled))
+            End Set
+        End Property
         ' Pagination Properties 
         Public Property CurrentPage As Integer
             Get
@@ -282,7 +293,6 @@ Namespace CreoPublisherApp.ViewModels
                 OnPropertyChanged()
             End Set
         End Property
-
         ' Commands
         Public Property BrowseFolderCommand As ICommand
         Public Property BrowseFilesCommand As ICommand
@@ -526,7 +536,6 @@ String.Join(vbCrLf, conflictFiles), "Skipped Files", MessageBoxButton.OK, Messag
                 Log &= "No files to publish conflicting filenames." & vbCrLf
                 Return
             End If
-
             'Log &= $"Starting Creo launch and export for {selectedFiles.Count} files..." & Environment.NewLine
             'Command to export only selected files.
             Log &= $"Starting Creo launch and export for {filesToExport.Count} files..." & Environment.NewLine
@@ -558,7 +567,10 @@ String.Join(vbCrLf, conflictFiles), "Skipped Files", MessageBoxButton.OK, Messag
             _proeCommonFuncs.setConfigOption("display_planes", "no")
             _proeCommonFuncs.setConfigOption("display_axes", "no")
             _proeCommonFuncs.setConfigOption("display_coord_sys", "no")
-            _proeCommonFuncs.ExportAllDrawingsAsPDF(filesToExport, OutputPath)
+            ' Ask user about single vs. multiple PDF export
+
+            _proeCommonFuncs.ExportAllDrawingsAsPDF(filesToExport, OutputPath, IsMergeEnabled)
+
             _openProe.KillCreO()
             'After exporting all the selected files and publishing.
             For Each file In selectedFiles

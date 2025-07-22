@@ -1,5 +1,7 @@
-﻿Imports pfcls
-Imports System.IO
+﻿Imports System.IO
+Imports PdfSharp.Pdf
+Imports PdfSharp.Pdf.IO
+Imports pfcls
 
 Public Class ProECommonFunctionalites
 
@@ -8,12 +10,13 @@ Public Class ProECommonFunctionalites
         Dim creoSession As IpfcBaseSession = CreoSessionManager.Instance.Session
         creoSession.SetConfigOption(configName, configValue)
     End Sub
-
     ' Export all selected drawings with custom PDF names
     Public Sub ExportAllDrawingsAsPDF(fileItems As List(Of FileItemModel),
-                                      outputFolder As String)
+                                       outputFolder As String, isMergeEnabled As Boolean)
 
         Dim session = CreoSessionManager.Instance.Session
+        Dim exportedPdfPaths As New List(Of String)()
+
         For Each item In fileItems.Where(Function(f) f.IsSelected)
             Try
                 Dim modelName = Path.GetFileNameWithoutExtension(item.FullPath)
@@ -29,15 +32,12 @@ Public Class ProECommonFunctionalites
                     Continue For
                 End If
 
-                ' Create basic PDF export instructions
                 Dim pdfInstr As IpfcPDFExportInstructions = (New CCpfcPDFExportInstructions()).Create()
-
-                ' Set output file name (custom if given)
                 Dim customName = If(String.IsNullOrWhiteSpace(item.CustomPdfName), modelName, item.CustomPdfName)
                 Dim pdfPath = Path.Combine(outputFolder, customName & ".pdf")
                 pdfInstr.FilePath = pdfPath
 
-                ' PDF options - don't launch PDF viewer
+                ' Disable viewer launch
                 Dim pdfOptions As IpfcPDFOptions = New CpfcPDFOptions()
                 Dim pdfOpt1 As New CCpfcPDFOption
                 Dim opt1 As IpfcPDFOption = pdfOpt1.Create()
@@ -46,20 +46,53 @@ Public Class ProECommonFunctionalites
                 opt1.OptionValue = arg1.CreateBoolArgValue(False)
                 pdfOptions.Append(opt1)
                 pdfInstr.Options = pdfOptions
+
                 model.Display()
                 model.Export(pdfPath, pdfInstr)
-                ' Close the active window after export 
+
                 Dim activeWindow As IpfcWindow = session.CurrentWindow
-                If activeWindow IsNot Nothing Then
-                    activeWindow.Close()
-                End If
-                ' Clear undisplayed models to free up resources
+                If activeWindow IsNot Nothing Then activeWindow.Close()
+
                 session.EraseUndisplayedModels()
+
                 item.Status = "Success"
+                exportedPdfPaths.Add(pdfPath)
+
             Catch ex As Exception
                 item.Status = "Error: " & ex.Message
             End Try
         Next
-    End Sub
 
+
+
+        ' Only merge if user requested
+        If isMergeEnabled Then
+                Try
+                    Dim mergedPdfPath = Path.Combine(outputFolder, "MergedDrawings.pdf")
+                    Using outputDocument As New PdfDocument()
+                        For Each pdfFile In exportedPdfPaths
+                            If File.Exists(pdfFile) Then
+                                Using inputDocument = PdfReader.Open(pdfFile, PdfDocumentOpenMode.Import)
+                                    For i = 0 To inputDocument.PageCount - 1
+                                        outputDocument.AddPage(inputDocument.Pages(i))
+                                    Next
+                                End Using
+                            End If
+                        Next
+                        outputDocument.Save(mergedPdfPath)
+
+                    ' Optionally delete individual PDFs after merging
+                    ' Delete individual PDFs after merging
+                    For Each filePath In exportedPdfPaths
+                        If File.Exists(filePath) Then
+                            File.Delete(filePath)
+                        End If
+                    Next
+
+                End Using
+                Catch mergeEx As Exception
+                    MessageBox.Show("PDF merge failed: " & mergeEx.Message)
+                End Try
+            End If
+    End Sub
 End Class
