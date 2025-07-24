@@ -110,5 +110,42 @@ Namespace CreoPublisherApp
                 End If
             End If
         End Sub
+
+
+        Private Sub ToggleTheme_Click(sender As Object, e As RoutedEventArgs)
+            Try
+                If isDarkTheme Then
+                    ' Switch to Light Theme
+                    Me.Resources("BackgroundColor") = New SolidColorBrush(Colors.White)
+                    Me.Resources("ForegroundColor") = New SolidColorBrush(Colors.Black)
+
+                    Dim lightGray As Color = Color.FromRgb(230, 230, 230)
+                    Me.Resources("ButtonBackground") = New SolidColorBrush(lightGray)
+                    Me.Resources("ButtonForeground") = New SolidColorBrush(Colors.Black)
+                    Me.Resources("TextBoxBackground") = New SolidColorBrush(lightGray)
+                    Me.Resources("TextBoxForeground") = New SolidColorBrush(Colors.Black)
+                Else
+                    ' Switch to Dark Theme
+                    Me.Resources("BackgroundColor") = New SolidColorBrush(Color.FromRgb(&H1E, &H1E, &H1E)) ' #1E1E1E
+                    Me.Resources("ForegroundColor") = New SolidColorBrush(Colors.White)
+
+                    Me.Resources("ButtonBackground") = New SolidColorBrush(Color.FromRgb(&H3A, &H3A, &H3A)) ' #3A3A3A
+                    Me.Resources("ButtonForeground") = New SolidColorBrush(Colors.White)
+                    Me.Resources("TextBoxBackground") = New SolidColorBrush(Color.FromRgb(&H2E, &H2E, &H2E)) ' #2E2E2E
+                    Me.Resources("TextBoxForeground") = New SolidColorBrush(Colors.White)
+                End If
+
+                ' Flip the theme mode
+                isDarkTheme = Not isDarkTheme
+
+                ' Update button label based on new theme state
+                ToggleThemeButton.Content = If(isDarkTheme, "☀️ Light Mode", "🌙 Dark Mode")
+
+            Catch ex As Exception
+                MessageBox.Show("Error switching theme: " & ex.Message)
+            End Try
+        End Sub
+
+
     End Class
 End Namespace

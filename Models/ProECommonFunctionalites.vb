@@ -20,10 +20,32 @@ Public Class ProECommonFunctionalites
         For Each item In fileItems.Where(Function(f) f.IsSelected)
             Try
                 Dim modelName = Path.GetFileNameWithoutExtension(item.FullPath)
-                Dim directory = Path.GetDirectoryName(item.FullPath)
+                Dim workingDir = SettingsManager.Instance.WorkingDirectory
+                ' Validate directory
+                If String.IsNullOrWhiteSpace(workingDir) Then
+                    MessageBox.Show("Working directory is not set. Please set it in Settings.", "Error", MessageBoxButton.OK, MessageBoxImage.Error)
+                    Exit Sub
+                End If
 
-                session.ChangeDirectory(directory)
+                If Not System.IO.Directory.Exists(workingDir) Then
+                    Try
+                        System.IO.Directory.CreateDirectory(workingDir)
+                    Catch ex As Exception
+                        MessageBox.Show("Unable to create working directory: " & ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error)
+                        Exit Sub
+                    End Try
+                End If
 
+
+                session.ChangeDirectory(workingDir)
+
+                ' Set Creo's working directory
+                Try
+                    session.ChangeDirectory(workingDir)
+                Catch ex As Exception
+                    MessageBox.Show("Failed to change Creo directory: " & ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error)
+                    Exit Sub
+                End Try
                 Dim desc = (New CCpfcModelDescriptor()).Create(EpfcModelType.EpfcMDL_DRAWING, modelName, Nothing)
                 Dim model As IpfcModel = session.RetrieveModel(desc)
 
@@ -62,9 +84,6 @@ Public Class ProECommonFunctionalites
                 item.Status = "Error: " & ex.Message
             End Try
         Next
-
-
-
         ' Only merge if user requested
         If isMergeEnabled Then
                 Try
