@@ -16,11 +16,12 @@
         'End Sub
         Private Async Sub Window_Loaded(sender As Object, e As RoutedEventArgs)
             ' Optional: Simulate loading delay
-            Await Task.Delay(4000)
+            Await Task.Delay(2500)
 
             ' Show MainWindow
             Dim mainWindow As New MainWindow()
             mainWindow.Show()
+            SettingsManager.Instance.WorkingDirectory = My.Settings.WorkingDirectory
 
             ' Close IntroWindow
             Me.Close()

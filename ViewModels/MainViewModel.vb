@@ -43,7 +43,6 @@ Namespace CreoPublisherApp.ViewModels
 
         ' Command to open Settings window
         Public Property OpenSettingsWindowCommand As ICommand
-
         Public Sub New()
             _filteredFilesView = CollectionViewSource.GetDefaultView(_files)
             _filteredFilesView.Filter = AddressOf FilterFiles
@@ -155,7 +154,8 @@ Namespace CreoPublisherApp.ViewModels
             End Get
             Set(value As String)
                 If _outputPath <> value Then
-                    _outputPath = value
+                    Dim cleanedValue = value?.Trim().Trim(""""c)
+                    _outputPath = cleanedValue
                     OnPropertyChanged()
                 End If
             End Set
@@ -375,7 +375,18 @@ Namespace CreoPublisherApp.ViewModels
             Dim file = TryCast(obj, FileItemModel)
             If file Is Nothing Then Return False
 
-            Dim matchesSearch As Boolean = String.IsNullOrWhiteSpace(SearchText) OrElse file.FileName.ToLower().Contains(SearchText.ToLower())
+            Dim matchesSearch As Boolean = True
+
+            If Not String.IsNullOrWhiteSpace(SearchText) Then
+                ' Split by comma, trim, and convert to lowercase
+                Dim searchTerms = SearchText.Split(","c).
+            Select(Function(s) s.Trim().ToLower()).
+            Where(Function(s) Not String.IsNullOrWhiteSpace(s)).
+            ToList()
+
+                ' Match if any term is found in the filename
+                matchesSearch = searchTerms.Any(Function(term) file.FileName.ToLower().Contains(term))
+            End If
             Dim matchesCreatedStart As Boolean = Not CreatedDateStart.HasValue OrElse file.CreatedDateRaw >= CreatedDateStart.Value
             Dim matchesCreatedEnd As Boolean = Not CreatedDateEnd.HasValue OrElse file.CreatedDateRaw <= CreatedDateEnd.Value
             Dim matchesModifiedStart As Boolean = Not ModifiedDateStart.HasValue OrElse file.ModifiedDateRaw >= ModifiedDateStart.Value
@@ -582,7 +593,7 @@ String.Join(vbCrLf, conflictFiles), "Skipped Files", MessageBoxButton.OK, Messag
             Log &= $"Starting Creo launch and export for {filesToExport.Count} files..." & Environment.NewLine
 
             'Opening the working directory and creo executable path
-            Dim workingDir = "C:\GAB\TempDir"
+            Dim workingDir = SettingsManager.Instance.WorkingDirectory
             Dim savedCreoPath = My.Settings.CreoPath
             If String.IsNullOrEmpty(savedCreoPath) OrElse Not File.Exists(savedCreoPath) Then
                 MessageBox.Show("Invalid or missing Creo executable path. Please set it in Settings.")
