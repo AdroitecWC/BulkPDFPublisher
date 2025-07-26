@@ -789,7 +789,7 @@ String.Join(vbCrLf, conflictFiles), "Skipped Files", MessageBoxButton.OK, Messag
 
                 'Optionally update My.Settings as well (uncomment if you want to persist immediately)
                 My.Settings.WorkingDirectory = directoryPath
-                My.Settings.Save()
+                'My.Settings.Save()
 
                 Log &= $"Working directory updated to: {directoryPath}{Environment.NewLine}"
             Catch ex As Exception

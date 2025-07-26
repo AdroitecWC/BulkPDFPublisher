@@ -100,7 +100,7 @@ Public Class SettingsWindowViewModel
         ' Save to My.Settings
         My.Settings.CreoPath = CreoPath
         My.Settings.WorkingDirectory = WorkingDirectory
-        My.Settings.Save()
+        'My.Settings.Save()
 
         ' Update Singleton (optional)
         SettingsManager.Instance.WorkingDirectory = WorkingDirectory

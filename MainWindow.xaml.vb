@@ -170,7 +170,7 @@ Namespace CreoPublisherApp
             Me.Resources("FilterTextBoxBackground") = New SolidColorBrush(Color.FromArgb(&HFF, &HF8, &HF8, &HF8))
             Me.Resources("DataGridBackground") = New SolidColorBrush(Colors.White)
             Me.Resources("DataGridAlternatingBackground") = New SolidColorBrush(Color.FromRgb(&HF8, &HF9, &HFA))
-            Me.Resources("DataGridHeaderBackground") = New SolidColorBrush(Color.FromRgb(&H4A, &H90, &HE2))
+            Me.Resources("DataGridHeaderBackground") = New SolidColorBrush(Color.FromRgb(&H2E, &H3A, &H59))
             Me.Resources("DataGridHeaderForeground") = New SolidColorBrush(Colors.White)
             Me.Resources("BorderBrushColor") = New SolidColorBrush(Color.FromRgb(&H4A, &H90, &HE2))
             Me.Resources("ComboBoxBackground") = New SolidColorBrush(Colors.White)

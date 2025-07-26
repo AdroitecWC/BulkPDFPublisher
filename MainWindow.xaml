@@ -26,9 +26,9 @@
         <SolidColorBrush x:Key="FilterTextBoxBackground" Color="#FFF8F8F8"/>
         <SolidColorBrush x:Key="DataGridBackground" Color="White"/>
         <SolidColorBrush x:Key="DataGridAlternatingBackground" Color="#F8F9FA"/>
-        <SolidColorBrush x:Key="DataGridHeaderBackground" Color="#4A90E2"/>
+        <SolidColorBrush x:Key="DataGridHeaderBackground" Color="#2E3A59"/>
         <SolidColorBrush x:Key="DataGridHeaderForeground" Color="White"/>
-        <SolidColorBrush x:Key="BorderBrushColor" Color="#4A90E2"/>
+        <SolidColorBrush x:Key="BorderBrushColor" Color="#2E3A59"/>
         <SolidColorBrush x:Key="ComboBoxBackground" Color="White"/>
         <SolidColorBrush x:Key="ComboBoxBorderBrush" Color="#CCCCCC"/>
         <SolidColorBrush x:Key="ComboBoxForeground" Color="#1E1E1E"/>
@@ -463,7 +463,7 @@
                         ToolTip="Open export and application settings." 
                         Command="{Binding OpenSettingsWindowCommand}"
                         Style="{StaticResource CircularButtonStyle}"
-                        Background="#6C757D">
+                        Background="Lavender">
                     <Image Source="pack://application:,,,/Resources/gear.png" 
                            Width="20" Height="20" 
                            Stretch="UniformToFill"/>
@@ -473,7 +473,7 @@
                         ToolTip="How to drag and drop files into the application." 
                         Click="ShowDragDropInstructions"
                         Style="{StaticResource CircularButtonStyle}"
-                        Background="#6C757D">
+                        Background="Lavender">
                     <Image Source="pack://application:,,,/Resources/help.png" 
                            Width="20" Height="20" 
                            Stretch="UniformToFill"/>
@@ -833,21 +833,23 @@
                 Margin="2,0"
                 Background="#28A745"/>
 
-                <Button Content="🔁"
-                Command="{Binding InvertSelectionCommand}"
-                ToolTip="Invert Selection"
+                
+                <Button Command="{Binding InvertSelectionCommand}"
                 Style="{StaticResource CircularButtonStyle}"
+                ToolTip="Invert Selection"
                 Width="30" Height="30"
-                Margin="2,0"
-                Background="#3A80D2"/>
+                         Background="#2E3A59"
+                Margin="2,0">
+                    <Image Source="/Resources/repeat.png" Width="16" Height="16"/>
+                </Button>
 
                 <Button Command="{Binding PreviousPageCommand}"
                 Style="{StaticResource CircularButtonStyle}"
                 ToolTip="Previous Page"
                 Width="30" Height="30"
-                         Background="#3A80D2"
+                         Background="#2E3A59"
                 Margin="2,0">
-                    <Image Source="pack://application:,,,/Resources/arrow-left.png" Width="14" Height="14"/>
+                    <Image Source="pack://application:,,,/Resources/arrow-left.png" Width="16" Height="16"/>
                 </Button>
 
                 <Border Background="{DynamicResource PaginationBorderBackground}" 
@@ -876,9 +878,9 @@
                 Style="{StaticResource CircularButtonStyle}"
                 ToolTip="Next Page"
                 Width="30" Height="30" 
-                         Background="#3A80D2"
+                         Background="#2E3A59"
                 Margin="2,0">
-                    <Image Source="pack://application:,,,/Resources/arrow-right.png" Width="14" Height="14"/>
+                    <Image Source="pack://application:,,,/Resources/arrow-right.png" Width="16" Height="16"/>
                 </Button>
 
                 <Button Content="🏠"
@@ -887,7 +889,8 @@
                 Style="{StaticResource CircularButtonStyle}"
                 Width="40" Height="40"
                 Margin="2,0"
-                Background="#3A80D2"/>
+                Background="#2E3A59"/>
+
             </StackPanel>
 
             <!-- Publish and Merge -->
