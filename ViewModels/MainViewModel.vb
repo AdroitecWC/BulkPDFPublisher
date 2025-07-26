@@ -75,6 +75,38 @@ Namespace CreoPublisherApp.ViewModels
         '        End If
         '    End Set
         'End Property
+        'Public Property InputPath As String
+        '    Get
+        '        Return _inputPath
+        '    End Get
+        '    Set(value As String)
+        '        If _inputPath <> value Then
+        '            Dim cleanedValue = value?.Trim().Trim(""""c)
+        '            _inputPath = cleanedValue
+        '            OnPropertyChanged()
+
+        '            If String.IsNullOrEmpty(_inputPath) Then Return
+        '            If _inputPath.Equals("Multiple files selected", StringComparison.OrdinalIgnoreCase) Then Return
+        '            If File.Exists(_inputPath) AndAlso Path.GetExtension(_inputPath).Equals(".drw", StringComparison.OrdinalIgnoreCase) Then Return
+
+        '            If Directory.Exists(_inputPath) Then
+        '                LoadFilesFromFolder(_inputPath)
+
+        '                If IsCliMode Then
+        '                    For Each f In _files
+        '                        f.IsSelected = True
+        '                    Next
+        '                    UpdateFilesCountText()
+        '                End If
+        '            Else
+        '                Log &= $"Warning: Input folder or file '{_inputPath}' does not exist or is invalid.{Environment.NewLine}"
+        '                _files.Clear()
+        '                UpdateFilesCountText()
+        '                RefreshFilter()
+        '            End If
+        '        End If
+        '    End Set
+        'End Property
         Public Property InputPath As String
             Get
                 Return _inputPath
@@ -87,11 +119,21 @@ Namespace CreoPublisherApp.ViewModels
 
                     If String.IsNullOrEmpty(_inputPath) Then Return
                     If _inputPath.Equals("Multiple files selected", StringComparison.OrdinalIgnoreCase) Then Return
-                    If File.Exists(_inputPath) AndAlso Path.GetExtension(_inputPath).Equals(".drw", StringComparison.OrdinalIgnoreCase) Then Return
 
+                    ' Handle single file selection
+                    If File.Exists(_inputPath) AndAlso Path.GetExtension(_inputPath).Equals(".drw", StringComparison.OrdinalIgnoreCase) Then
+                        ' Update working directory to the directory containing the file
+                        Dim fileDirectory = Path.GetDirectoryName(_inputPath)
+                        UpdateWorkingDirectory(fileDirectory)
+                        Return
+                    End If
+
+                    ' Handle folder selection
                     If Directory.Exists(_inputPath) Then
-                        LoadFilesFromFolder(_inputPath)
+                        ' Update working directory to the selected folder
+                        UpdateWorkingDirectory(_inputPath)
 
+                        LoadFilesFromFolder(_inputPath)
                         If IsCliMode Then
                             For Each f In _files
                                 f.IsSelected = True
@@ -107,7 +149,6 @@ Namespace CreoPublisherApp.ViewModels
                 End If
             End Set
         End Property
-
         Public Property OutputPath As String
             Get
                 Return _outputPath
@@ -730,7 +771,20 @@ String.Join(vbCrLf, conflictFiles), "Skipped Files", MessageBoxButton.OK, Messag
                 MessageBox.Show("Please enter a valid numeric page number.", "Invalid Input", MessageBoxButton.OK, MessageBoxImage.Warning)
             End If
         End Sub
+        Private Sub UpdateWorkingDirectory(directoryPath As String)
+            Try
+                ' Update the SettingsManager instance
+                SettingsManager.Instance.WorkingDirectory = directoryPath
 
+                'Optionally update My.Settings as well (uncomment if you want to persist immediately)
+                My.Settings.WorkingDirectory = directoryPath
+                My.Settings.Save()
+
+                Log &= $"Working directory updated to: {directoryPath}{Environment.NewLine}"
+            Catch ex As Exception
+                Log &= $"Error updating working directory: {ex.Message}{Environment.NewLine}"
+            End Try
+        End Sub
 
     End Class
 
