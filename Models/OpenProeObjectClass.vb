@@ -40,6 +40,11 @@ Public Class OpenProeObjectClass
                     proc.Kill()
                 End If
             Next
+            For Each proc In System.Diagnostics.Process.GetProcessesByName("pfcls")
+                If proc.HasExited = False Then
+                    proc.Kill()
+                End If
+            Next
         Catch ex As Exception
         End Try
     End Sub

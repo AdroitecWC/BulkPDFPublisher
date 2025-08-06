@@ -831,7 +831,7 @@
                 Style="{StaticResource CircularButtonStyle}"
                 Width="30" Height="30"
                 Margin="2,0"
-                Background="#28A745"/>
+                Background="#2E3A59"/>
 
                 
                 <Button Command="{Binding InvertSelectionCommand}"

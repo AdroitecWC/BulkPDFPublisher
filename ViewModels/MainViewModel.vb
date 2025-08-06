@@ -3,13 +3,17 @@ Imports System.ComponentModel
 Imports System.IO
 Imports System.Linq
 Imports System.Runtime.CompilerServices
+Imports System.Text.RegularExpressions
 Imports System.Windows ' For MessageBox and Window
 Imports System.Windows.Data
 Imports System.Windows.Forms.VisualStyles.VisualStyleElement
 Imports System.Windows.Input
+Imports System.Windows.Media
 Imports Microsoft.Win32
 Imports Ookii.Dialogs.Wpf
-Imports System.Windows.Media
+Imports OfficeOpenXml
+Imports OfficeOpenXml.Style
+Imports System.Drawing
 Namespace CreoPublisherApp.ViewModels
 
     Public Class MainViewModel
@@ -63,17 +67,7 @@ Namespace CreoPublisherApp.ViewModels
 
         ' Properties
 
-        'Public Property InputPath As String
-        '    Get
-        '        Return _inputPath
-        '    End Get
-        '    Set(value As String)
-        '        If _inputPath <> value Then
-        '            _inputPath = value
-        '            OnPropertyChanged()
-        '        End If
-        '    End Set
-        'End Property
+
         'Public Property InputPath As String
         '    Get
         '        Return _inputPath
@@ -370,6 +364,7 @@ Namespace CreoPublisherApp.ViewModels
 
 
 
+
         ' Filtering logic
         Private Function FilterFiles(obj As Object) As Boolean
             Dim file = TryCast(obj, FileItemModel)
@@ -449,18 +444,77 @@ Namespace CreoPublisherApp.ViewModels
         Private Sub LoadFilesFromFolder(folderPath As String)
             Try
                 _files.Clear()
-                Dim filesInFolder = Directory.GetFiles(folderPath).Where(Function(f) Path.GetExtension(f).ToLower() = ".drw").ToArray()
-                For Each filePath In filesInFolder
+
+                ' Get all .drw files (including .drw.1, .drw.2, etc.)
+                Dim filesInFolder = Directory.GetFiles(folderPath).
+            Where(Function(f) Regex.IsMatch(System.IO.Path.GetFileName(f), "\.drw(\.\d+)?$", RegexOptions.IgnoreCase)).
+            ToList()
+
+                ' Remove duplicates by content hash
+                Dim uniqueFiles = RemoveDuplicateFiles(filesInFolder)
+
+                ' Load remaining files
+                For Each filePath In uniqueFiles
                     Dim fileModel As New FileItemModel(filePath)
                     AddHandler fileModel.PropertyChanged, AddressOf FileItem_PropertyChanged
                     _files.Add(fileModel)
                 Next
+
                 UpdateFilesCountText()
                 RefreshFilter()
+
             Catch ex As Exception
                 Log &= $"Error loading files from folder: {ex.Message}{Environment.NewLine}"
             End Try
         End Sub
+
+        Private Function RemoveDuplicateFiles(filePaths As List(Of String)) As List(Of String)
+            Dim seenHashes As New HashSet(Of String)
+            Dim uniqueFiles As New List(Of String)
+
+            For Each file In filePaths
+                Try
+                    Dim hash = ComputeFileHash(file)
+                    If seenHashes.Contains(hash) Then
+                        ' Duplicate — delete it
+                        System.IO.File.Delete(file)
+                    Else
+                        seenHashes.Add(hash)
+                        uniqueFiles.Add(file)
+                    End If
+                Catch ex As Exception
+                    Log &= $"Error processing file {System.IO.Path.GetFileName(file)}: {ex.Message}{Environment.NewLine}"
+                End Try
+            Next
+
+            Return uniqueFiles
+        End Function
+
+        Private Function HasDuplicateFiles(filePaths As String()) As Boolean
+            Dim hashSet As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+            For Each path In filePaths
+                Try
+                    Dim hash = ComputeFileHash(path)
+                    If hashSet.Contains(hash) Then
+                        Return True ' Duplicate found
+                    End If
+                    hashSet.Add(hash)
+                Catch ex As Exception
+Log &= $"Error hashing file {System.IO.Path.GetFileName(path)}: {ex.Message}{Environment.NewLine}"
+                End Try
+            Next
+            Return False
+        End Function
+
+        Private Function ComputeFileHash(filePath As String) As String
+            Using sha256 = Security.Cryptography.SHA256.Create()
+                Using stream = File.OpenRead(filePath)
+                    Dim hashBytes = sha256.ComputeHash(stream)
+                    Return BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant()
+                End Using
+            End Using
+        End Function
+
 
         Private Sub UpdateFilesCountText()
             Dim selectedCount = _files.Where(Function(f) f.IsSelected).Count()
@@ -541,6 +595,7 @@ Namespace CreoPublisherApp.ViewModels
                 Dim pdfName As String = If(String.IsNullOrWhiteSpace(file.CustomPdfName),
                        Path.GetFileNameWithoutExtension(file.FileName),
                        Path.GetFileNameWithoutExtension(file.CustomPdfName))
+
                 Dim pdfPath As String = Path.Combine(OutputPath, pdfName & ".pdf")
 
                 If System.IO.File.Exists(pdfPath) Then
@@ -735,13 +790,20 @@ String.Join(vbCrLf, conflictFiles), "Skipped Files", MessageBoxButton.OK, Messag
         'Export to CSV File Method
         Private Sub ExportReportToCsv(files As List(Of FileItemModel))
             Try
-                Dim reportPath = System.IO.Path.Combine(OutputPath, $"PublishReport_{DateTime.Now:yyyyMMdd_HHmmss}.csv")
+                Dim timestamp As String = DateTime.Now.ToString("yyyyMMdd_HHmmss")
+                Dim generatedTime As String = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
 
-                Using writer As New StreamWriter(reportPath, False)
+                ' ==== CSV EXPORT ====
+                Dim csvPath = Path.Combine(OutputPath, $"PublishReport_{timestamp}.csv")
+                Using writer As New StreamWriter(csvPath, False)
+                    ' Title and spacing
+                    writer.WriteLine("Adroitec Engineering Solutions Pvt. Ltd - Bulk PDF Publisher Report")
+                    writer.WriteLine()
+
+                    ' Header
                     writer.WriteLine("File Name,Custom PDF Name,Status,Created Date,Modified Date,File Size,PDF Generated Timestamp")
 
-                    Dim generatedTimestamp As String = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
-
+                    ' Rows
                     For Each file In files
                         Dim line As String = String.Join(",",
                     """" & file.FileName & """",
@@ -750,16 +812,18 @@ String.Join(vbCrLf, conflictFiles), "Skipped Files", MessageBoxButton.OK, Messag
                     file.CreatedDate,
                     file.ModifiedDate,
                     file.FileSize,
-                    """" & generatedTimestamp & """")
+                    """" & generatedTime & """")
                         writer.WriteLine(line)
                     Next
                 End Using
-                Log &= $"Export report saved to: {reportPath}{Environment.NewLine}"
+                Log &= $"CSV report saved to: {csvPath}{Environment.NewLine}"
+
+
+
             Catch ex As Exception
-                Log &= $"Error generating export report: {ex.Message}{Environment.NewLine}"
+                Log &= $"Error generating report: {ex.Message}{Environment.NewLine}"
             End Try
-        End Sub
-        'Update File Method for Pagination 
+        End Sub        'Update File Method for Pagination 
         Private Sub UpdatePagedFiles()
             If _filteredFiles Is Nothing Then Return
 

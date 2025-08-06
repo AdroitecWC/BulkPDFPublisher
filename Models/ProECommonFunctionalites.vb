@@ -1,4 +1,5 @@
 ﻿Imports System.IO
+Imports System.Security.AccessControl
 Imports PdfSharp.Pdf
 Imports PdfSharp.Pdf.IO
 Imports pfcls
@@ -20,6 +21,7 @@ Public Class ProECommonFunctionalites
         For Each item In fileItems.Where(Function(f) f.IsSelected)
             Try
                 Dim modelName = Path.GetFileNameWithoutExtension(item.FullPath)
+
                 Dim workingDir = SettingsManager.Instance.WorkingDirectory
                 ' Validate directory
                 If String.IsNullOrWhiteSpace(workingDir) Then
@@ -67,6 +69,9 @@ Public Class ProECommonFunctionalites
                 Dim arg1 As New CMpfcArgument
                 opt1.OptionValue = arg1.CreateBoolArgValue(False)
                 pdfOptions.Append(opt1)
+
+
+                pdfInstr.Options = pdfOptions
                 pdfInstr.Options = pdfOptions
 
                 model.Display()
@@ -86,19 +91,19 @@ Public Class ProECommonFunctionalites
         Next
         ' Only merge if user requested
         If isMergeEnabled Then
-                Try
-                    Dim mergedPdfPath = Path.Combine(outputFolder, "MergedDrawings.pdf")
-                    Using outputDocument As New PdfDocument()
-                        For Each pdfFile In exportedPdfPaths
-                            If File.Exists(pdfFile) Then
-                                Using inputDocument = PdfReader.Open(pdfFile, PdfDocumentOpenMode.Import)
-                                    For i = 0 To inputDocument.PageCount - 1
-                                        outputDocument.AddPage(inputDocument.Pages(i))
-                                    Next
-                                End Using
-                            End If
-                        Next
-                        outputDocument.Save(mergedPdfPath)
+            Try
+                Dim mergedPdfPath = Path.Combine(outputFolder, "MergedDrawings.pdf")
+                Using outputDocument As New PdfDocument()
+                    For Each pdfFile In exportedPdfPaths
+                        If File.Exists(pdfFile) Then
+                            Using inputDocument = PdfReader.Open(pdfFile, PdfDocumentOpenMode.Import)
+                                For i = 0 To inputDocument.PageCount - 1
+                                    outputDocument.AddPage(inputDocument.Pages(i))
+                                Next
+                            End Using
+                        End If
+                    Next
+                    outputDocument.Save(mergedPdfPath)
 
                     ' Optionally delete individual PDFs after merging
                     ' Delete individual PDFs after merging
@@ -109,9 +114,11 @@ Public Class ProECommonFunctionalites
                     Next
 
                 End Using
-                Catch mergeEx As Exception
-                    MessageBox.Show("PDF merge failed: " & mergeEx.Message)
-                End Try
-            End If
+            Catch mergeEx As Exception
+                MessageBox.Show("PDF merge failed: " & mergeEx.Message)
+            End Try
+        End If
+
+
     End Sub
 End Class
