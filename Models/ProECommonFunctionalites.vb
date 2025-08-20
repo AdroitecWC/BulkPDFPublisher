@@ -12,6 +12,7 @@ Public Class ProECommonFunctionalites
         creoSession.SetConfigOption(configName, configValue)
     End Sub
     ' Export all selected drawings with custom PDF names
+
     Public Sub ExportAllDrawingsAsPDF(fileItems As List(Of FileItemModel),
                                        outputFolder As String, isMergeEnabled As Boolean)
 
@@ -121,4 +122,5 @@ Public Class ProECommonFunctionalites
 
 
     End Sub
+
 End Class

@@ -53,6 +53,14 @@ Partial Class Application
             Environment.Exit(0)
         Else
             ' GUI Mode
+            If Not LicenseManager.CheckLicense() Then
+                Dim licWin As New LicenseWindow()
+                Dim activated = licWin.ShowDialog()
+                If activated <> True Then
+                    ' User canceled activation, exit app
+                    Environment.Exit(0)
+                End If
+            End If
             Dim intro = New IntroWindow()
             intro.Show()
         End If

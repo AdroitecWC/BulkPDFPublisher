@@ -101,6 +101,30 @@ Namespace My
                 Me("WorkingDirectory") = value
             End Set
         End Property
+        
+        <Global.System.Configuration.UserScopedSettingAttribute(),  _
+         Global.System.Diagnostics.DebuggerNonUserCodeAttribute(),  _
+         Global.System.Configuration.DefaultSettingValueAttribute("False")>  _
+        Public Property IsDarkTheme() As Boolean
+            Get
+                Return CType(Me("IsDarkTheme"),Boolean)
+            End Get
+            Set
+                Me("IsDarkTheme") = value
+            End Set
+        End Property
+        
+        <Global.System.Configuration.UserScopedSettingAttribute(),  _
+         Global.System.Diagnostics.DebuggerNonUserCodeAttribute(),  _
+         Global.System.Configuration.DefaultSettingValueAttribute("")>  _
+        Public Property PreferredReportViewer() As String
+            Get
+                Return CType(Me("PreferredReportViewer"),String)
+            End Get
+            Set
+                Me("PreferredReportViewer") = value
+            End Set
+        End Property
     End Class
 End Namespace
 

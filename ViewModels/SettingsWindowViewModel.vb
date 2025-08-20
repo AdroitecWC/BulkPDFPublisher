@@ -1,15 +1,14 @@
 ﻿Imports System.ComponentModel
-Imports System.Drawing.Printing
 Imports System.IO
 Imports System.Runtime.CompilerServices
-Imports System.Windows.Forms
-Imports Ookii.Dialogs.Wpf
+Imports System.Windows
 Imports Microsoft.Win32
-Imports OpenFileDialog = Microsoft.Win32.OpenFileDialog
+Imports Ookii.Dialogs.Wpf
 
 Public Class SettingsWindowViewModel
     Implements INotifyPropertyChanged
 
+    ' Creo executable path
     Private _creoPath As String
     Private _originalCreoPath As String
     Public Property CreoPath As String
@@ -23,9 +22,10 @@ Public Class SettingsWindowViewModel
             End If
         End Set
     End Property
+
+    ' Working directory path
     Private _workingDirectory As String
     Private _originalWorkingDirectory As String
-
     Public Property WorkingDirectory As String
         Get
             Return _workingDirectory
@@ -38,39 +38,61 @@ Public Class SettingsWindowViewModel
         End Set
     End Property
 
+    ' Preferred report viewer
+    Private _preferredReportViewer As String
+    Public Property PreferredReportViewer As String
+        Get
+            Return _preferredReportViewer
+        End Get
+        Set(value As String)
+            If _preferredReportViewer <> value Then
+                _preferredReportViewer = value
+                OnPropertyChanged()
+            End If
+        End Set
+    End Property
+
+    ' Commands
     Public Property BrowseCommand As ICommand
+    Public Property BrowseWorkingDirectoryCommand As ICommand
     Public Property SaveCommand As ICommand
     Public Property CancelCommand As ICommand
     Public Property ConfirmCommand As ICommand
-    Public Property BrowseWorkingDirectoryCommand As ICommand
 
+    ' Close event
     Public Event RequestClose As Action
 
     Public Sub New()
+        ' Load settings
         _creoPath = My.Settings.CreoPath
         _originalCreoPath = _creoPath
-        BrowseCommand = New RelayCommand(AddressOf Browse)
-        SaveCommand = New RelayCommand(AddressOf Save)
-        CancelCommand = New RelayCommand(AddressOf Cancel)
-        ConfirmCommand = New RelayCommand(AddressOf Confirm)
 
         _workingDirectory = My.Settings.WorkingDirectory
         _originalWorkingDirectory = _workingDirectory
+
+
+
+        ' Initialize commands
+        BrowseCommand = New RelayCommand(AddressOf Browse)
         BrowseWorkingDirectoryCommand = New RelayCommand(AddressOf BrowseWorkingDirectory)
-
-
+        SaveCommand = New RelayCommand(AddressOf Save)
+        CancelCommand = New RelayCommand(AddressOf Cancel)
+        ConfirmCommand = New RelayCommand(AddressOf Confirm)
     End Sub
 
+    ' Browse for parametric.exe
     Private Sub Browse()
         Dim dlg As New OpenFileDialog()
         dlg.Filter = "Creo Executable (parametric.exe)|parametric.exe"
         dlg.Title = "Select Creo parametric.exe"
         dlg.InitialDirectory = "C:\Program Files\PTC"
+
         If dlg.ShowDialog() = True Then
-            Dim cleanedPath = dlg.FileName.Trim().Trim(""""c)
-            CreoPath = cleanedPath
+            CreoPath = dlg.FileName.Trim().Trim(""""c)
         End If
     End Sub
+
+    ' Browse for working directory
     Private Sub BrowseWorkingDirectory()
         Dim dialog As New VistaFolderBrowserDialog()
         dialog.Description = "Select Working Directory"
@@ -79,65 +101,67 @@ Public Class SettingsWindowViewModel
         dialog.SelectedPath = WorkingDirectory
 
         If dialog.ShowDialog() = True Then
-            Dim cleanedPath = dialog.SelectedPath.Trim().Trim(""""c)
-            WorkingDirectory = cleanedPath
+            WorkingDirectory = dialog.SelectedPath.Trim().Trim(""""c)
         End If
     End Sub
 
+    ' Save settings without closing
     Private Sub Save()
-        ' Validate Creo Path
-        If Not File.Exists(CreoPath) OrElse Not CreoPath.ToLower().EndsWith("parametric.exe") Then
-            System.Windows.MessageBox.Show("Invalid file. Please select a valid parametric.exe.", "Error", MessageBoxButton.OK, MessageBoxImage.Error)
-            Return
-        End If
-
-        ' Validate Working Directory
-        If String.IsNullOrWhiteSpace(WorkingDirectory) OrElse Not Directory.Exists(WorkingDirectory) Then
-            System.Windows.MessageBox.Show("Please select a valid working directory.", "Error", MessageBoxButton.OK, MessageBoxImage.Error)
-            Return
-        End If
+        If Not ValidateInputs() Then Return
 
         ' Save to My.Settings
         My.Settings.CreoPath = CreoPath
         My.Settings.WorkingDirectory = WorkingDirectory
-        'My.Settings.Save()
 
-        ' Update Singleton (optional)
-        SettingsManager.Instance.WorkingDirectory = WorkingDirectory
+        My.Settings.Save()
 
-        ' Update backup values
+        ' Update backup
         _originalCreoPath = CreoPath
         _originalWorkingDirectory = WorkingDirectory
 
-        System.Windows.MessageBox.Show("Settings saved successfully.")
+        MessageBox.Show("Settings saved successfully.", "Saved", MessageBoxButton.OK, MessageBoxImage.Information)
     End Sub
 
+    ' Cancel changes
     Private Sub Cancel()
         CreoPath = _originalCreoPath
         WorkingDirectory = _originalWorkingDirectory
-
+        PreferredReportViewer = If(My.Settings.PreferredReportViewer, "Default")
         RaiseEvent RequestClose()
     End Sub
 
+    ' Save and close
     Private Sub Confirm()
-        If Not File.Exists(CreoPath) OrElse Not CreoPath.ToLower().EndsWith("parametric.exe") Then
-            System.Windows.MessageBox.Show("Invalid file. Please select a valid parametric.exe.", "Error", MessageBoxButton.OK, MessageBoxImage.Error)
-            Return
-        End If
-        If String.IsNullOrWhiteSpace(WorkingDirectory) OrElse Not Directory.Exists(WorkingDirectory) Then
-            System.Windows.MessageBox.Show("Please select the working directory.", "Error", MessageBoxButton.OK, MessageBoxImage.Error)
-            Return
-        End If
+        If Not ValidateInputs() Then Return
 
         My.Settings.CreoPath = CreoPath
-        SettingsManager.Instance.WorkingDirectory = Me.WorkingDirectory
+        My.Settings.WorkingDirectory = WorkingDirectory
+
         My.Settings.Save()
+
         RaiseEvent RequestClose()
     End Sub
 
+    ' Validation
+    Private Function ValidateInputs() As Boolean
+        If String.IsNullOrWhiteSpace(CreoPath) OrElse Not File.Exists(CreoPath) OrElse Not CreoPath.ToLower().EndsWith("parametric.exe") Then
+            MessageBox.Show("Invalid file. Please select a valid parametric.exe.", "Error", MessageBoxButton.OK, MessageBoxImage.Error)
+            Return False
+        End If
+
+        If String.IsNullOrWhiteSpace(WorkingDirectory) OrElse Not Directory.Exists(WorkingDirectory) Then
+            MessageBox.Show("Please select a valid working directory.", "Error", MessageBoxButton.OK, MessageBoxImage.Error)
+            Return False
+        End If
+
+
+
+        Return True
+    End Function
+
+    ' INotifyPropertyChanged
     Public Event PropertyChanged As PropertyChangedEventHandler Implements INotifyPropertyChanged.PropertyChanged
     Protected Sub OnPropertyChanged(<CallerMemberName> Optional name As String = "")
         RaiseEvent PropertyChanged(Me, New PropertyChangedEventArgs(name))
     End Sub
-
 End Class

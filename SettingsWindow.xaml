@@ -83,7 +83,7 @@
                     Foreground="White"
                     BorderBrush="#2980b9"
                     BorderThickness="1"
-                    Cursor="Hand">
+                    Cursor="Hand" >
                 <Button.ToolTip>
                     Browse and select parametric.exe from your system.
                 </Button.ToolTip>

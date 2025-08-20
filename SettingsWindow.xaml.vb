@@ -3,6 +3,8 @@
 Namespace CreoPublisherApp
 
     Class SettingsWindow
+
+
         Private Sub SettingsWindow_Loaded(sender As Object, e As RoutedEventArgs) Handles Me.Loaded
             Dim vm = TryCast(DataContext, SettingsWindowViewModel)
             If vm IsNot Nothing Then
