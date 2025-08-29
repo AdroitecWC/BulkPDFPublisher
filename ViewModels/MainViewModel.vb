@@ -741,6 +741,8 @@ String.Join(vbCrLf, conflictFiles), "Skipped Files", MessageBoxButton.OK, Messag
             ' Ask user about single vs. multiple PDF export
 
             _proeCommonFuncs.ExportAllDrawingsAsPDF(filesToExport, OutputPath, IsMergeEnabled)
+            '_proeCommonFuncs.ExportAllDrawingsAsSTEP(filesToExport, OutputPath)
+
             _openProe.KillCreO()
             'After exporting all the selected files and publishing.
             For Each file In selectedFiles
@@ -750,7 +752,7 @@ String.Join(vbCrLf, conflictFiles), "Skipped Files", MessageBoxButton.OK, Messag
 
             '  Export report
             ExportReportToCsv(selectedFiles)
-            MessageBox.Show($"PDF export completed successfully for {filesToExport.Count} files!" & vbCrLf &
+            MessageBox.Show($"PDF export completed suc cessfully for {filesToExport.Count} files!" & vbCrLf &
                             "A detailed report has been saved in the output folder.",
                             "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information)
 
@@ -765,7 +767,6 @@ String.Join(vbCrLf, conflictFiles), "Skipped Files", MessageBoxButton.OK, Messag
                 End Try
             End If
         End Sub
-
         ' Open settings
         Private Sub OpenSettingsWindow()
             Dim settingsWindow As New SettingsWindow()
@@ -943,6 +944,7 @@ String.Join(vbCrLf, conflictFiles), "Skipped Files", MessageBoxButton.OK, Messag
                 Case 3
                     IsStep3Completed = True
                 Case 4
+
                     IsStep4Completed = True
             End Select
         End Sub
