@@ -125,6 +125,78 @@ Namespace My
                 Me("PreferredReportViewer") = value
             End Set
         End Property
+        
+        <Global.System.Configuration.UserScopedSettingAttribute(),  _
+         Global.System.Diagnostics.DebuggerNonUserCodeAttribute(),  _
+         Global.System.Configuration.DefaultSettingValueAttribute("False")>  _
+        Public Property EnableWatermark() As Boolean
+            Get
+                Return CType(Me("EnableWatermark"),Boolean)
+            End Get
+            Set
+                Me("EnableWatermark") = value
+            End Set
+        End Property
+        
+        <Global.System.Configuration.UserScopedSettingAttribute(),  _
+         Global.System.Diagnostics.DebuggerNonUserCodeAttribute(),  _
+         Global.System.Configuration.DefaultSettingValueAttribute("")>  _
+        Public Property WatermarkText() As String
+            Get
+                Return CType(Me("WatermarkText"),String)
+            End Get
+            Set
+                Me("WatermarkText") = value
+            End Set
+        End Property
+        
+        <Global.System.Configuration.UserScopedSettingAttribute(),  _
+         Global.System.Diagnostics.DebuggerNonUserCodeAttribute(),  _
+         Global.System.Configuration.DefaultSettingValueAttribute("40")>  _
+        Public Property WatermarkFontSize() As Integer
+            Get
+                Return CType(Me("WatermarkFontSize"),Integer)
+            End Get
+            Set
+                Me("WatermarkFontSize") = value
+            End Set
+        End Property
+        
+        <Global.System.Configuration.UserScopedSettingAttribute(),  _
+         Global.System.Diagnostics.DebuggerNonUserCodeAttribute(),  _
+         Global.System.Configuration.DefaultSettingValueAttribute("0.3")>  _
+        Public Property WatermarkOpacity() As Double
+            Get
+                Return CType(Me("WatermarkOpacity"),Double)
+            End Get
+            Set
+                Me("WatermarkOpacity") = value
+            End Set
+        End Property
+        
+        <Global.System.Configuration.UserScopedSettingAttribute(),  _
+         Global.System.Diagnostics.DebuggerNonUserCodeAttribute(),  _
+         Global.System.Configuration.DefaultSettingValueAttribute("Diagonal")>  _
+        Public Property WatermarkPosition() As String
+            Get
+                Return CType(Me("WatermarkPosition"),String)
+            End Get
+            Set
+                Me("WatermarkPosition") = value
+            End Set
+        End Property
+        
+        <Global.System.Configuration.UserScopedSettingAttribute(),  _
+         Global.System.Diagnostics.DebuggerNonUserCodeAttribute(),  _
+         Global.System.Configuration.DefaultSettingValueAttribute("Gray")>  _
+        Public Property WatermarkColor() As String
+            Get
+                Return CType(Me("WatermarkColor"),String)
+            End Get
+            Set
+                Me("WatermarkColor") = value
+            End Set
+        End Property
     End Class
 End Namespace
 

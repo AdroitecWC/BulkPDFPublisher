@@ -860,27 +860,44 @@ String.Join(vbCrLf, conflictFiles), "Skipped Files", MessageBoxButton.OK, Messag
                 Dim generatedTime As String = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
 
                 ' ==== CSV EXPORT ====
-                Dim csvPath = Path.Combine(OutputPath, $"BulkPDFPublisherReport{timestamp}.csv")
+                Dim csvPath = Path.Combine(OutputPath, $"BulkPDFPublisherReport_{timestamp}.csv")
                 Using writer As New StreamWriter(csvPath, False)
-                    ' Title and spacing
-                    writer.WriteLine("Adroitec Engineering Solutions Pvt. Ltd - Bulk PDF Publisher Report")
+
+                    ' ==== TITLE BLOCK ====
+                    writer.WriteLine("Adroitec Engineering Solutions Pvt. Ltd")
+                    writer.WriteLine("Bulk PDF Publisher - Report")
+                    writer.WriteLine("Generated On:," & generatedTime)
+                    writer.WriteLine("Report Version: 1.0")
+                    writer.WriteLine(New String("-"c, 80))
                     writer.WriteLine()
 
-                    ' Header
-                    writer.WriteLine("File Name,Custom PDF Name,Status,Created Date,Modified Date,File Size,PDF Generated Timestamp")
+                    ' ==== COLUMN HEADERS ====
+                    writer.WriteLine("File Name,Custom PDF Name,Status,Created Date,Modified Date,File Size (KB),PDF Generated Timestamp")
 
-                    ' Rows
+                    ' ==== ROWS ====
                     For Each file In files
                         Dim line As String = String.Join(",",
-                    """" & file.FileName & """",
-                    """" & file.CustomPdfName & """",
-                    """" & file.Status & """",
+                    $"""{file.FileName}""",
+                    $"""{file.CustomPdfName}""",
+                    $"""{file.Status}""",
                     file.CreatedDate,
                     file.ModifiedDate,
                     file.FileSize,
-                    """" & generatedTime & """")
+                    $"""{generatedTime}""")
                         writer.WriteLine(line)
                     Next
+
+                    writer.WriteLine()
+
+                    ' ==== FOOTER SUMMARY ====
+                    Dim totalFiles = files.Count
+                    Dim successCount As Integer = System.Linq.Enumerable.Count(files,
+                    Function(f) Not String.IsNullOrEmpty(f.Status) AndAlso
+                f.Status.IndexOf("success", StringComparison.OrdinalIgnoreCase) >= 0)
+                    Dim failCount = totalFiles - successCount
+                    writer.WriteLine(New String("-"c, 80))
+                    writer.WriteLine($"Summary, Total Files: {totalFiles}, Success: {successCount}, Failed: {failCount}")
+                    writer.WriteLine(New String("-"c, 80))
                 End Using
 
                 ' Update tracking properties

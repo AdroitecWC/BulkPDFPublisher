@@ -3,7 +3,7 @@ Imports System.Security.AccessControl
 Imports PdfSharp.Pdf
 Imports PdfSharp.Pdf.IO
 Imports pfcls
-
+Imports PdfSharp.Drawing
 Public Class ProECommonFunctionalites
 
     ' Set Creo config option
@@ -14,7 +14,7 @@ Public Class ProECommonFunctionalites
     ' Export all selected drawings with custom PDF names
 
     Public Sub ExportAllDrawingsAsPDF(fileItems As List(Of FileItemModel),
-                                       outputFolder As String, isMergeEnabled As Boolean)
+                                  outputFolder As String, isMergeEnabled As Boolean)
 
         Dim session = CreoSessionManager.Instance.Session
         Dim exportedPdfPaths As New List(Of String)()
@@ -39,16 +39,8 @@ Public Class ProECommonFunctionalites
                     End Try
                 End If
 
-
                 session.ChangeDirectory(workingDir)
 
-                ' Set Creo's working directory
-                Try
-                    session.ChangeDirectory(workingDir)
-                Catch ex As Exception
-                    MessageBox.Show("Failed to change Creo directory: " & ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error)
-                    Exit Sub
-                End Try
                 Dim desc = (New CCpfcModelDescriptor()).Create(EpfcModelType.EpfcMDL_DRAWING, modelName, Nothing)
                 Dim model As IpfcModel = session.RetrieveModel(desc)
 
@@ -71,12 +63,31 @@ Public Class ProECommonFunctionalites
                 opt1.OptionValue = arg1.CreateBoolArgValue(False)
                 pdfOptions.Append(opt1)
 
-
-                pdfInstr.Options = pdfOptions
                 pdfInstr.Options = pdfOptions
 
                 model.Display()
                 model.Export(pdfPath, pdfInstr)
+
+                ' ✅ Apply watermark only if enabled
+                If SettingsManager.Instance.EnableWatermark Then
+                    Dim originalPdfPath As String = pdfPath
+                    Dim outputPdfPath As String = Path.Combine(outputFolder, customName & "_wm.pdf")
+
+                    WatermarkHelper.AddWatermarkToPdf(
+                    originalPdfPath,
+                    outputPdfPath,
+                    SettingsManager.Instance.WatermarkText,
+                    CSng(SettingsManager.Instance.WatermarkOpacity),
+                    CSng(SettingsManager.Instance.WatermarkFontSize),
+                    0, ' rotation
+                    SettingsManager.Instance.WatermarkColor,
+                    SettingsManager.Instance.WatermarkPosition
+                )
+
+                    ' Replace original PDF with watermarked one
+                    If File.Exists(originalPdfPath) Then File.Delete(originalPdfPath)
+                    File.Move(outputPdfPath, originalPdfPath)
+                End If
 
                 Dim activeWindow As IpfcWindow = session.CurrentWindow
                 If activeWindow IsNot Nothing Then activeWindow.Close()
@@ -90,7 +101,8 @@ Public Class ProECommonFunctionalites
                 item.Status = "Error: " & ex.Message
             End Try
         Next
-        ' Only merge if user requested
+
+        ' ✅ Merge only if requested
         If isMergeEnabled Then
             Try
                 Dim mergedPdfPath = Path.Combine(outputFolder, "MergedDrawings.pdf")
@@ -106,20 +118,16 @@ Public Class ProECommonFunctionalites
                     Next
                     outputDocument.Save(mergedPdfPath)
 
-                    ' Optionally delete individual PDFs after merging
                     ' Delete individual PDFs after merging
                     For Each filePath In exportedPdfPaths
-                        If File.Exists(filePath) Then
-                            File.Delete(filePath)
-                        End If
+                        If File.Exists(filePath) Then File.Delete(filePath)
                     Next
-
                 End Using
             Catch mergeEx As Exception
                 MessageBox.Show("PDF merge failed: " & mergeEx.Message)
             End Try
         End If
 
-
     End Sub
+
 End Class
