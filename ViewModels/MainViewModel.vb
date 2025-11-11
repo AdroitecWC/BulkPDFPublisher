@@ -266,12 +266,7 @@ Namespace CreoPublisherApp.ViewModels
             End Get
         End Property
 
-        Public ReadOnly Property PublishButtonText As String
-            Get
-                Return _publishButtonText
-            End Get
 
-        End Property
 
         Public ReadOnly Property FilesDisplayText As String
             Get
@@ -389,6 +384,32 @@ Namespace CreoPublisherApp.ViewModels
                 _reportFilePath = value
                 OnPropertyChanged(NameOf(ReportFilePath))
             End Set
+        End Property
+        Private _isPublishing As Boolean = False
+
+        Public Property IsPublishing As Boolean
+            Get
+                Return _isPublishing
+            End Get
+            Set(value As Boolean)
+                If _isPublishing <> value Then
+                    _isPublishing = value
+                    OnPropertyChanged()
+                    OnPropertyChanged(NameOf(PublishButtonText))
+                    ' Update CanExecute for the button
+                    CType(PublishCommand, RelayCommand).RaiseCanExecuteChanged()
+                End If
+            End Set
+        End Property
+
+        Public ReadOnly Property PublishButtonText As String
+            Get
+                If IsPublishing Then
+                    Return "Publishing..."
+                Else
+                    Return $"🚀 {If(IsMergeEnabled, "Merge", "Export")} {_selectedFilesCount} Files"
+                End If
+            End Get
         End Property
 
         ' Commands
@@ -631,7 +652,7 @@ Namespace CreoPublisherApp.ViewModels
 
         Private Sub InvertSelectionFiles()
             For Each f As FileItemModel In _filteredFilesView
-                f.IsSelected = Not f.IsSelected
+                f.IsSelected = Not f.IsSelected 
             Next
             UpdateFilesCountText()
             OnPropertyChanged(NameOf(Files))
@@ -639,133 +660,140 @@ Namespace CreoPublisherApp.ViewModels
 
         ' Publish files method
         Public Sub PublishFiles()
-            Dim selectedFiles = _files.Where(Function(f) f.IsSelected).ToList()
-            If selectedFiles.Count = 0 Then
-                MessageBox.Show("No Files selected for publishing")
-                Log &= "No files selected for publishing." & Environment.NewLine
-                Return
-            End If
-            If String.IsNullOrEmpty(OutputPath) Then
-                MessageBox.Show("Please select an output folder before publishing")
-                Log &= "Please select an output folder before publishing." & Environment.NewLine
-                Return
-            End If
-            ' It checks for the filename duplication conflicts and throws error
-            Dim overwriteAll As Boolean? = Nothing
-            Dim conflictFiles As New List(Of String)
-            Dim filesToExport As New List(Of FileItemModel)
-
-            For Each file In selectedFiles
-                Dim pdfName As String = If(String.IsNullOrWhiteSpace(file.CustomPdfName),
-                       Path.GetFileNameWithoutExtension(file.FileName),
-                       Path.GetFileNameWithoutExtension(file.CustomPdfName))
-
-                Dim pdfPath As String = Path.Combine(OutputPath, pdfName & ".pdf")
-
-                If System.IO.File.Exists(pdfPath) Then
-                    If overwriteAll Is Nothing Then
-                        Dim dlg As New FileConflictDialog(pdfName & ".pdf")
-                        dlg.Owner = Application.Current.MainWindow
-                        dlg.ShowDialog()
-                        'Select case based on the user selection the skipping of files takes place
-                        Select Case dlg.UserChoice
-                            Case FileConflictDialog.ConflictResult.Yes
-                                filesToExport.Add(file) ' Add only this one
-                            Case FileConflictDialog.ConflictResult.No
-                                file.Status = "Error: File exists, not overwritten."
-                                conflictFiles.Add(pdfName & ".pdf")
-                                Continue For
-                            Case FileConflictDialog.ConflictResult.YesToAll
-                                overwriteAll = True
-                                filesToExport.Add(file)
-                            Case FileConflictDialog.ConflictResult.NoToAll
-                                overwriteAll = False
-                                file.Status = "Error: File exists, not overwritten."
-                                conflictFiles.Add(pdfName & ".pdf")
-                                Continue For
-                        End Select
-                        'If the user wants to overwrite all the files
-                    ElseIf overwriteAll = True Then
-                        filesToExport.Add(file)
-                    Else
-                        file.Status = "Error: File exists, not overwritten."
-                        conflictFiles.Add(pdfName & ".pdf")
-                        Continue For
-                    End If
-                Else
-                    filesToExport.Add(file)
+            If IsPublishing Then Return
+            IsPublishing = True
+            Try
+                Dim selectedFiles = _files.Where(Function(f) f.IsSelected).ToList()
+                If selectedFiles.Count = 0 Then
+                    MessageBox.Show("No Files selected for publishing")
+                    Log &= "No files selected for publishing." & Environment.NewLine
+                    Return
                 End If
-            Next
-            'It the user skips any files then it will show skipped files in  the messagebox
-            If conflictFiles.Any() Then
-                MessageBox.Show("The following files were skipped due to overwrite being declined:" & vbCrLf &
-String.Join(vbCrLf, conflictFiles), "Skipped Files", MessageBoxButton.OK, MessageBoxImage.Warning)
-                Log &= "Skipped files: " & String.Join(", ", conflictFiles) & vbCrLf
-            End If
+                If String.IsNullOrEmpty(OutputPath) Then
+                    MessageBox.Show("Please select an output folder before publishing")
+                    Log &= "Please select an output folder before publishing." & Environment.NewLine
+                    Return
+                End If
+                ' It checks for the filename duplication conflicts and throws error
+                Dim overwriteAll As Boolean? = Nothing
+                Dim conflictFiles As New List(Of String)
+                Dim filesToExport As New List(Of FileItemModel)
 
-            If filesToExport.Count = 0 Then
-                Log &= "No files to publish conflicting filenames." & vbCrLf
-                Return
-            End If
-            'Log &= $"Starting Creo launch and export for {selectedFiles.Count} files..." & Environment.NewLine
-            'Command to export only selected files.
-            Log &= $"Starting Creo launch and export for {filesToExport.Count} files..." & Environment.NewLine
+                For Each file In selectedFiles
+                    Dim pdfName As String = If(String.IsNullOrWhiteSpace(file.CustomPdfName),
+                           Path.GetFileNameWithoutExtension(file.FileName),
+                           Path.GetFileNameWithoutExtension(file.CustomPdfName))
 
-            'Opening the working directory and creo executable path
-            Dim workingDir = SettingsManager.Instance.WorkingDirectory
-            Dim savedCreoPath = My.Settings.CreoPath
-            If String.IsNullOrEmpty(savedCreoPath) OrElse Not File.Exists(savedCreoPath) Then
-                MessageBox.Show("Invalid or missing Creo executable path. Please set it in Settings.")
-                Log &= "Invalid or missing Creo path." & Environment.NewLine
-                Return
-            End If
+                    Dim pdfPath As String = Path.Combine(OutputPath, pdfName & ".pdf")
 
-            Dim launchSuccess = _openProe.RunProeWithPath(savedCreoPath, workingDir)
-            'If creo launch fails.
-            If Not launchSuccess Then
-                MessageBox.Show("Failed to launch Creo")
-                Log &= "Failed to launch Creo." & Environment.NewLine
-                Return
-            End If
-            'If initiliaze creo session is failed.
-            CreoSessionManager.Instance.InitializeCreoSession()
-            If CreoSessionManager.Instance.Session Is Nothing Then
-                MessageBox.Show("Failed to initialize Creo session")
-                Log &= "Failed to initialize Creo session." & Environment.NewLine
-                Return
-            End If
+                    If System.IO.File.Exists(pdfPath) Then
+                        If overwriteAll Is Nothing Then
+                            Dim dlg As New FileConflictDialog(pdfName & ".pdf")
+                            dlg.Owner = Application.Current.MainWindow
+                            dlg.ShowDialog()
+                            'Select case based on the user selection the skipping of files takes place
+                            Select Case dlg.UserChoice
+                                Case FileConflictDialog.ConflictResult.Yes
+                                    filesToExport.Add(file) ' Add only this one
+                                Case FileConflictDialog.ConflictResult.No
+                                    file.Status = "Error: File exists, not overwritten."
+                                    conflictFiles.Add(pdfName & ".pdf")
+                                    Continue For
+                                Case FileConflictDialog.ConflictResult.YesToAll
+                                    overwriteAll = True
+                                    filesToExport.Add(file)
+                                Case FileConflictDialog.ConflictResult.NoToAll
+                                    overwriteAll = False
+                                    file.Status = "Error: File exists, not overwritten."
+                                    conflictFiles.Add(pdfName & ".pdf")
+                                    Continue For
+                            End Select
+                            'If the user wants to overwrite all the files
+                        ElseIf overwriteAll = True Then
+                            filesToExport.Add(file)
+                        Else
+                            file.Status = "Error: File exists, not overwritten."
+                            conflictFiles.Add(pdfName & ".pdf")
+                            Continue For
+                        End If
+                    Else
+                        filesToExport.Add(file)
+                    End If
+                Next
+                'It the user skips any files then it will show skipped files in  the messagebox
+                If conflictFiles.Any() Then
+                    MessageBox.Show("The following files were skipped due to overwrite being declined:" & vbCrLf &
+    String.Join(vbCrLf, conflictFiles), "Skipped Files", MessageBoxButton.OK, MessageBoxImage.Warning)
+                    Log &= "Skipped files: " & String.Join(", ", conflictFiles) & vbCrLf
+                End If
 
-            _proeCommonFuncs.setConfigOption("display_planes", "no")
-            _proeCommonFuncs.setConfigOption("display_axes", "no")
-            _proeCommonFuncs.setConfigOption("display_coord_sys", "no")
-            ' Ask user about single vs. multiple PDF export
+                If filesToExport.Count = 0 Then
+                    Log &= "No files to publish conflicting filenames." & vbCrLf
+                    Return
+                End If
+                'Log &= $"Starting Creo launch and export for {selectedFiles.Count} files..." & Environment.NewLine
+                'Command to export only selected files.
+                Log &= $"Starting Creo launch and export for {filesToExport.Count} files..." & Environment.NewLine
 
-            _proeCommonFuncs.ExportAllDrawingsAsPDF(filesToExport, OutputPath, IsMergeEnabled)
-            '_proeCommonFuncs.ExportAllDrawingsAsSTEP(filesToExport, OutputPath)
+                'Opening the working directory and creo executable path
+                Dim workingDir = SettingsManager.Instance.WorkingDirectory
+                Dim savedCreoPath = My.Settings.CreoPath
+                If String.IsNullOrEmpty(savedCreoPath) OrElse Not File.Exists(savedCreoPath) Then
+                    MessageBox.Show("Invalid or missing Creo executable path. Please set it in Settings.")
+                    Log &= "Invalid or missing Creo path." & Environment.NewLine
+                    Return
+                End If
 
-            _openProe.KillCreO()
-            'After exporting all the selected files and publishing.
-            For Each file In selectedFiles
-                OnPropertyChanged(NameOf(Files))
-            Next
-            Log &= "Publishing complete." & Environment.NewLine
+                Dim launchSuccess = _openProe.RunProeWithPath(savedCreoPath, workingDir)
+                'If creo launch fails.
+                If Not launchSuccess Then
+                    MessageBox.Show("Failed to launch Creo")
+                    Log &= "Failed to launch Creo." & Environment.NewLine
+                    Return
+                End If
+                'If initiliaze creo session is failed.
+                CreoSessionManager.Instance.InitializeCreoSession()
+                If CreoSessionManager.Instance.Session Is Nothing Then
+                    MessageBox.Show("Failed to initialize Creo session")
+                    Log &= "Failed to initialize Creo session." & Environment.NewLine
+                    Return
+                End If
 
-            '  Export report
-            ExportReportToCsv(selectedFiles)
-            MessageBox.Show($"PDF export completed suc cessfully for {filesToExport.Count} files!" & vbCrLf &
-                            "A detailed report has been saved in the output folder.",
-                            "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information)
+                _proeCommonFuncs.setConfigOption("display_planes", "no")
+                _proeCommonFuncs.setConfigOption("display_axes", "no")
+                _proeCommonFuncs.setConfigOption("display_coord_sys", "no")
+                ' Ask user about single vs. multiple PDF export
 
-            If IsCliMode Then
-                Try
-                    Dim logFolder = Path.Combine(OutputPath, "Logs")
-                    Directory.CreateDirectory(logFolder)
-                    Dim logFile = Path.Combine(logFolder, $"CLIPublishLog_{DateTime.Now:yyyyMMdd_HHmmss}.txt")
-                    File.WriteAllText(logFile, Log)
-                Catch ex As Exception
-                    ' Ignore logging errors in CLI
-                End Try
-            End If
+                _proeCommonFuncs.ExportAllDrawingsAsPDF(filesToExport, OutputPath, IsMergeEnabled)
+                '_proeCommonFuncs.ExportAllDrawingsAsSTEP(filesToExport, OutputPath)
+
+                _openProe.KillCreO()
+                'After exporting all the selected files and publishing.
+                For Each file In selectedFiles
+                    OnPropertyChanged(NameOf(Files))
+                Next
+                Log &= "Publishing complete." & Environment.NewLine
+
+                '  Export report
+                ExportReportToCsv(selectedFiles)
+                MessageBox.Show($"PDF export completed suc cessfully for {filesToExport.Count} files!" & vbCrLf &
+                                "A detailed report has been saved in the output folder.",
+                                "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information)
+
+                If IsCliMode Then
+                    Try
+                        Dim logFolder = Path.Combine(OutputPath, "Logs")
+                        Directory.CreateDirectory(logFolder)
+                        Dim logFile = Path.Combine(logFolder, $"CLIPublishLog_{DateTime.Now:yyyyMMdd_HHmmss}.txt")
+                        File.WriteAllText(logFile, Log)
+                    Catch ex As Exception
+                        ' Ignore logging errors in CLI
+                    End Try
+
+                End If
+            Finally
+                IsPublishing = False
+            End Try
         End Sub
         ' Open settings
         Private Sub OpenSettingsWindow()
@@ -930,7 +958,7 @@ String.Join(vbCrLf, conflictFiles), "Skipped Files", MessageBoxButton.OK, Messag
         Private Sub OpenReportCommandExecute(obj As Object)
             Try
                 If CanOpenReport(obj) Then
-                    Process.Start(New ProcessStartInfo(_lastExportedCsvPath) With {.UseShellExecute = True})
+                    Process.Start("notepad.exe", _lastExportedCsvPath)
                 Else
                     MessageBox.Show("No exported report found. Please export the report first.", "Info", MessageBoxButton.OK, MessageBoxImage.Information)
                 End If

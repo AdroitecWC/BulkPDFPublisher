@@ -81,14 +81,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="EPPlus" Version="8.0.8" />
+    <PackageReference Include="EPPlus" Version="8.2.1" />
     <PackageReference Include="Extended.Wpf.Toolkit" Version="5.0.0" />
     <PackageReference Include="itext7" Version="9.3.0" />
     <PackageReference Include="iTextSharp" Version="5.5.13.4" />
     <PackageReference Include="Microsoft-WindowsAPICodePack-Shell" Version="1.1.5" />
     <PackageReference Include="Ookii.Dialogs.Wpf" Version="5.0.1" />
-    <PackageReference Include="PDFsharp" Version="6.2.0" />
-    <PackageReference Include="System.Management" Version="9.0.8" />
+    <PackageReference Include="PDFsharp" Version="6.2.2" />
+    <PackageReference Include="System.Management" Version="9.0.9" />
   </ItemGroup>
 
   <ItemGroup>

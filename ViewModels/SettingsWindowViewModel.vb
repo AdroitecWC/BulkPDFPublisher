@@ -226,7 +226,6 @@ Public Class SettingsWindowViewModel
     ' Save logic
     ' -------------------------------
     Private Sub SaveSettings()
-        ' Save to SettingsManager
         SettingsManager.Instance.CreoPath = CreoPath
         SettingsManager.Instance.WorkingDirectory = WorkingDirectory
         SettingsManager.Instance.WatermarkText = WatermarkText
@@ -236,10 +235,9 @@ Public Class SettingsWindowViewModel
         SettingsManager.Instance.WatermarkPosition = WatermarkPosition
         SettingsManager.Instance.EnableWatermark = EnableWatermark
 
-        ' Persist to My.Settings
+        ' 👇 persist to disk
+        SettingsManager.Instance.Save()
 
-
-        ' Backup current values
         _originalCreoPath = CreoPath
         _originalWorkingDirectory = WorkingDirectory
     End Sub
