@@ -27,7 +27,7 @@
                      Height="8"
                      VerticalAlignment="Bottom"
                      Margin="20"
-                     IsIndeterminate="True"
+                     IsIndeterminate="True"      
                      Foreground="DodgerBlue"
                      Background="Transparent"/>
        

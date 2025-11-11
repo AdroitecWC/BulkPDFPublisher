@@ -3,7 +3,7 @@ Imports System.Security.AccessControl
 Imports PdfSharp.Pdf
 Imports PdfSharp.Pdf.IO
 Imports pfcls
-
+Imports PdfSharp.Drawing
 Public Class ProECommonFunctionalites
 
     ' Set Creo config option
@@ -12,8 +12,9 @@ Public Class ProECommonFunctionalites
         creoSession.SetConfigOption(configName, configValue)
     End Sub
     ' Export all selected drawings with custom PDF names
+
     Public Sub ExportAllDrawingsAsPDF(fileItems As List(Of FileItemModel),
-                                       outputFolder As String, isMergeEnabled As Boolean)
+                                          outputFolder As String, isMergeEnabled As Boolean)
 
         Dim session = CreoSessionManager.Instance.Session
         Dim exportedPdfPaths As New List(Of String)()

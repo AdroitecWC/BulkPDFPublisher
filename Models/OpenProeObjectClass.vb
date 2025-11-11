@@ -8,6 +8,11 @@ Public Class OpenProeObjectClass
     ' Updated method using saved path
     Public Function RunProeWithPath(proeExePath As String, workingDir As String) As Boolean
         Try
+            Dim creoProcesses = System.Diagnostics.Process.GetProcessesByName("xtop")
+            If creoProcesses.Length > 0 Then
+                MsgBox("Creo is already running. Please close it before proceeding.", MsgBoxStyle.Exclamation, "CREO Already Running")
+                Return False
+            End If
             If Not File.Exists(proeExePath) Then
                 MessageBox.Show("Creo executable not found.")
                 Return False

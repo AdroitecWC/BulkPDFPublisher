@@ -1,5 +1,7 @@
 ﻿Imports System.Collections.ObjectModel
+Imports System.Collections.Specialized.BitVector32
 Imports System.ComponentModel
+Imports System.Drawing
 Imports System.IO
 Imports System.Linq
 Imports System.Runtime.CompilerServices
@@ -10,10 +12,11 @@ Imports System.Windows.Forms.VisualStyles.VisualStyleElement
 Imports System.Windows.Input
 Imports System.Windows.Media
 Imports Microsoft.Win32
-Imports Ookii.Dialogs.Wpf
 Imports OfficeOpenXml
 Imports OfficeOpenXml.Style
-Imports System.Drawing
+Imports Ookii.Dialogs.Wpf
+Imports pfcls
+
 Namespace CreoPublisherApp.ViewModels
 
     Public Class MainViewModel
@@ -35,11 +38,14 @@ Namespace CreoPublisherApp.ViewModels
         Private _selectDeselectButtonText As String = "Select All"
         Private _searchText As String = String.Empty
         Private _isMergeEnabled As Boolean = False
-        ' Pagination Variables Declaration 
-        Private _currentPage As Integer = 1
-        Private _pageSize As Integer = 10
-        Private _filteredFiles As ObservableCollection(Of FileItemModel)
-        Private _pagedFiles As ObservableCollection(Of FileItemModel)
+
+        ' New properties for UI display
+        Private _totalFilesCount As Integer = 0
+        Private _selectedFilesCount As Integer = 0
+        Private _filesToRenameCount As Integer = 0
+        Private _publishButtonText As String = "🚀 Export 0 Files"
+        Private _lastExportedCsvPath As String
+
 
         ' Creo automation classes
         Private _openProe As New OpenProeObjectClass()
@@ -47,6 +53,7 @@ Namespace CreoPublisherApp.ViewModels
 
         ' Command to open Settings window
         Public Property OpenSettingsWindowCommand As ICommand
+
         Public Sub New()
             _filteredFilesView = CollectionViewSource.GetDefaultView(_files)
             _filteredFilesView.Filter = AddressOf FilterFiles
@@ -63,43 +70,13 @@ Namespace CreoPublisherApp.ViewModels
             ClearFiltersCommand = New RelayCommand(AddressOf ClearFilters)
 
             OpenSettingsWindowCommand = New RelayCommand(AddressOf OpenSettingsWindow)
+            ExportReportCommand = New RelayCommand(AddressOf ExportReportCommandExecute)
+            OpenReportCommand = New RelayCommand(AddressOf OpenReportCommandExecute, AddressOf CanOpenReport)
         End Sub
 
+
+
         ' Properties
-
-
-        'Public Property InputPath As String
-        '    Get
-        '        Return _inputPath
-        '    End Get
-        '    Set(value As String)
-        '        If _inputPath <> value Then
-        '            Dim cleanedValue = value?.Trim().Trim(""""c)
-        '            _inputPath = cleanedValue
-        '            OnPropertyChanged()
-
-        '            If String.IsNullOrEmpty(_inputPath) Then Return
-        '            If _inputPath.Equals("Multiple files selected", StringComparison.OrdinalIgnoreCase) Then Return
-        '            If File.Exists(_inputPath) AndAlso Path.GetExtension(_inputPath).Equals(".drw", StringComparison.OrdinalIgnoreCase) Then Return
-
-        '            If Directory.Exists(_inputPath) Then
-        '                LoadFilesFromFolder(_inputPath)
-
-        '                If IsCliMode Then
-        '                    For Each f In _files
-        '                        f.IsSelected = True
-        '                    Next
-        '                    UpdateFilesCountText()
-        '                End If
-        '            Else
-        '                Log &= $"Warning: Input folder or file '{_inputPath}' does not exist or is invalid.{Environment.NewLine}"
-        '                _files.Clear()
-        '                UpdateFilesCountText()
-        '                RefreshFilter()
-        '            End If
-        '        End If
-        '    End Set
-        'End Property
         Public Property InputPath As String
             Get
                 Return _inputPath
@@ -109,7 +86,8 @@ Namespace CreoPublisherApp.ViewModels
                     Dim cleanedValue = value?.Trim().Trim(""""c)
                     _inputPath = cleanedValue
                     OnPropertyChanged()
-
+                    OnPropertyChanged(NameOf(HasInputFolder))
+                    OnPropertyChanged(NameOf(NoInputFolderText))
                     If String.IsNullOrEmpty(_inputPath) Then Return
                     If _inputPath.Equals("Multiple files selected", StringComparison.OrdinalIgnoreCase) Then Return
 
@@ -132,16 +110,21 @@ Namespace CreoPublisherApp.ViewModels
                                 f.IsSelected = True
                             Next
                             UpdateFilesCountText()
+                            UpdateCounts()
                         End If
                     Else
                         Log &= $"Warning: Input folder or file '{_inputPath}' does not exist or is invalid.{Environment.NewLine}"
                         _files.Clear()
                         UpdateFilesCountText()
+                        UpdateCounts()
                         RefreshFilter()
                     End If
                 End If
+                CompleteStep(1)
             End Set
         End Property
+
+
         Public Property OutputPath As String
             Get
                 Return _outputPath
@@ -151,8 +134,12 @@ Namespace CreoPublisherApp.ViewModels
                     Dim cleanedValue = value?.Trim().Trim(""""c)
                     _outputPath = cleanedValue
                     OnPropertyChanged()
+                    OnPropertyChanged(NameOf(HasOutputFolder))
+                    OnPropertyChanged(NameOf(NoOutputFolderText))
                 End If
+                CompleteStep(2)
             End Set
+
         End Property
 
         Public Property SearchText As String
@@ -232,6 +219,7 @@ Namespace CreoPublisherApp.ViewModels
                 If _log <> value Then
                     _log = value
                     OnPropertyChanged()
+                    CompleteStep(4)
                 End If
             End Set
         End Property
@@ -241,19 +229,6 @@ Namespace CreoPublisherApp.ViewModels
                 Return _filesCountText
             End Get
         End Property
-
-        Public Property SelectDeselectButtonText As String
-            Get
-                Return _selectDeselectButtonText
-            End Get
-            Set(value As String)
-                If _selectDeselectButtonText <> value Then
-                    _selectDeselectButtonText = value
-                    OnPropertyChanged()
-                End If
-            End Set
-        End Property
-
         Public ReadOnly Property IsCliMode As Boolean
             Get
                 Return Application.Current Is Nothing OrElse Application.Current.MainWindow Is Nothing
@@ -267,67 +242,176 @@ Namespace CreoPublisherApp.ViewModels
             Set(value As Boolean)
                 _isMergeEnabled = value
                 OnPropertyChanged(NameOf(IsMergeEnabled))
+                UpdatePublishButtonText()
+                CompleteStep(3) ' Mark step 3 as completed
             End Set
         End Property
-        ' Pagination Properties 
-        Public Property CurrentPage As Integer
+
+        ' New properties for the sidebar display
+        Public ReadOnly Property TotalFilesCount As String
             Get
-                Return _currentPage
+                Return _totalFilesCount.ToString()
             End Get
-            Set(value As Integer)
-                If _currentPage <> value Then
-                    _currentPage = value
-                    OnPropertyChanged()
-                    CurrentPageInput = value.ToString() ' Keep textbox in sync
-                    UpdatePagedFiles()
-                End If
-            End Set
         End Property
-        Private _currentPageInput As String = "1"
-        Public Property CurrentPageInput As String
+
+        Public ReadOnly Property SelectedFilesCount As String
             Get
-                Return _currentPageInput
+                Return _selectedFilesCount.ToString()
+            End Get
+        End Property
+
+        Public ReadOnly Property FilesToRenameCount As String
+            Get
+                Return _filesToRenameCount.ToString()
+            End Get
+        End Property
+
+
+
+        Public ReadOnly Property FilesDisplayText As String
+            Get
+                Return $"{_totalFilesCount} files"
+            End Get
+        End Property
+
+        ' Property to check if output folder is selected
+        Public ReadOnly Property HasOutputFolder As Boolean
+            Get
+                Return Not String.IsNullOrEmpty(_outputPath) AndAlso Directory.Exists(_outputPath)
+            End Get
+        End Property
+        Public ReadOnly Property HasInputFolder As Boolean
+            Get
+                Return Not String.IsNullOrEmpty(_inputPath) AndAlso
+               (_inputPath.Equals("Multiple files selected", StringComparison.OrdinalIgnoreCase) = False) AndAlso
+               (File.Exists(_inputPath) OrElse Directory.Exists(_inputPath))
+            End Get
+        End Property
+        Public ReadOnly Property NoInputFolderText As String
+            Get
+                Return If(HasInputFolder, "", "No input folder selected")
+            End Get
+        End Property
+
+        Public ReadOnly Property NoOutputFolderText As String
+            Get
+                Return If(HasOutputFolder, "", "No output folder selected")
+            End Get
+        End Property
+        Public Property SelectDeselectButtonText As String
+            Get
+                Return _selectDeselectButtonText
             End Get
             Set(value As String)
-                If _currentPageInput <> value Then
-                    _currentPageInput = value
+                _selectDeselectButtonText = value
+                OnPropertyChanged(NameOf(SelectDeselectButtonText))
+            End Set
+        End Property
+
+        Private _isStep1Completed As Boolean
+        Public Property IsStep1Completed As Boolean
+            Get
+                Return _isStep1Completed
+            End Get
+            Set(value As Boolean)
+                If _isStep1Completed <> value Then
+                    _isStep1Completed = value
+                    RaiseEvent PropertyChanged(Me, New PropertyChangedEventArgs(NameOf(IsStep1Completed)))
+                    RaiseEvent PropertyChanged(Me, New PropertyChangedEventArgs(NameOf(CanSelectOutputFolder)))
+                End If
+            End Set
+        End Property
+
+        Private _isStep2Completed As Boolean
+        Public Property IsStep2Completed As Boolean
+            Get
+                Return _isStep2Completed
+            End Get
+            Set(value As Boolean)
+                If _isStep2Completed <> value Then
+                    _isStep2Completed = value
+                    RaiseEvent PropertyChanged(Me, New PropertyChangedEventArgs(NameOf(IsStep2Completed)))
+                    RaiseEvent PropertyChanged(Me, New PropertyChangedEventArgs(NameOf(CanReviewPublish)))
+                End If
+            End Set
+        End Property
+
+        Private _isStep3Completed As Boolean
+        Public Property IsStep3Completed As Boolean
+            Get
+                Return _isStep3Completed
+            End Get
+            Set(value As Boolean)
+                If _isStep3Completed <> value Then
+                    _isStep3Completed = value
+                    RaiseEvent PropertyChanged(Me, New PropertyChangedEventArgs(NameOf(IsStep3Completed)))
+                End If
+            End Set
+        End Property
+
+        Private _isStep4Completed As Boolean
+        Public Property IsStep4Completed As Boolean
+            Get
+                Return _isStep4Completed
+            End Get
+            Set(value As Boolean)
+                If _isStep4Completed <> value Then
+                    _isStep4Completed = value
+                    RaiseEvent PropertyChanged(Me, New PropertyChangedEventArgs(NameOf(IsStep4Completed)))
+                End If
+            End Set
+        End Property
+
+        Public ReadOnly Property CanSelectOutputFolder As Boolean
+            Get
+                Return IsStep1Completed
+            End Get
+            ' no setter, auto dependent on Step1 completion
+        End Property
+
+        Public ReadOnly Property CanReviewPublish As Boolean
+            Get
+                Return IsStep2Completed
+            End Get
+        End Property
+
+        Private _reportFilePath As String
+        Public Property ReportFilePath As String
+            Get
+                Return _reportFilePath
+            End Get
+            Set(value As String)
+                _reportFilePath = value
+                OnPropertyChanged(NameOf(ReportFilePath))
+            End Set
+        End Property
+        Private _isPublishing As Boolean = False
+
+        Public Property IsPublishing As Boolean
+            Get
+                Return _isPublishing
+            End Get
+            Set(value As Boolean)
+                If _isPublishing <> value Then
+                    _isPublishing = value
                     OnPropertyChanged()
-
-                    ' Optional: Parse immediately if you want live updates
-                    'TryGoToPage()
+                    OnPropertyChanged(NameOf(PublishButtonText))
+                    ' Update CanExecute for the button
+                    CType(PublishCommand, RelayCommand).RaiseCanExecuteChanged()
                 End If
             End Set
         End Property
 
-        Public Property PageSize As Integer
+        Public ReadOnly Property PublishButtonText As String
             Get
-                Return _pageSize
-            End Get
-            Set(value As Integer)
-                _pageSize = value
-                OnPropertyChanged()
-                UpdatePagedFiles()
-            End Set
-        End Property
-
-        Public ReadOnly Property TotalPages As Integer
-            Get
-                If _filteredFiles IsNot Nothing AndAlso _filteredFiles.Count > 0 Then
-                    Return Math.Ceiling(_filteredFiles.Count / _pageSize)
+                If IsPublishing Then
+                    Return "Publishing..."
+                Else
+                    Return $"🚀 {If(IsMergeEnabled, "Merge", "Export")} {_selectedFilesCount} Files"
                 End If
-                Return 1
             End Get
         End Property
 
-        Public Property PagedFiles As ObservableCollection(Of FileItemModel)
-            Get
-                Return _pagedFiles
-            End Get
-            Set(value As ObservableCollection(Of FileItemModel))
-                _pagedFiles = value
-                OnPropertyChanged()
-            End Set
-        End Property
         ' Commands
         Public Property BrowseFolderCommand As ICommand
         Public Property BrowseFilesCommand As ICommand
@@ -339,31 +423,8 @@ Namespace CreoPublisherApp.ViewModels
         Public Property ToggleSelectCommand As ICommand
         Public Property ClearFiltersCommand As ICommand
 
-
-        ' Navigation Commands
-        Public ReadOnly Property NextPageCommand As ICommand = New RelayCommand(Sub()
-                                                                                    If CurrentPage < TotalPages Then
-                                                                                        CurrentPage += 1
-                                                                                    End If
-                                                                                End Sub)
-
-        Public ReadOnly Property PreviousPageCommand As ICommand = New RelayCommand(Sub()
-                                                                                        If CurrentPage > 1 Then
-                                                                                            CurrentPage -= 1
-                                                                                        End If
-                                                                                    End Sub)
-        Public Property ResetPageCommand As ICommand = New RelayCommand(Sub()
-                                                                            CurrentPage = 1
-                                                                            UpdatePagedFiles()
-                                                                        End Sub)
-        Public ReadOnly Property GoToPageCommand As ICommand
-            Get
-                Return New RelayCommand(AddressOf TryGoToPage)
-            End Get
-        End Property
-
-
-
+        Public Property OpenReportCommand As ICommand
+        Public Property ExportReportCommand As ICommand
 
         ' Filtering logic
         Private Function FilterFiles(obj As Object) As Boolean
@@ -390,20 +451,10 @@ Namespace CreoPublisherApp.ViewModels
             Return matchesSearch AndAlso matchesCreatedStart AndAlso matchesCreatedEnd AndAlso matchesModifiedStart AndAlso matchesModifiedEnd
         End Function
 
-        'Private Sub RefreshFilter()
-        '    _filteredFilesView.Refresh()
-        'End Sub
         Private Sub RefreshFilter()
             _filteredFilesView.Refresh()
-
-            ' Update _filteredFiles list used for pagination
-            Dim filteredList = _files.Where(Function(f) FilterFiles(f)).ToList()
-            _filteredFiles = New ObservableCollection(Of FileItemModel)(filteredList)
-
-            CurrentPage = 1
-            UpdatePagedFiles()
+            UpdateCounts()
         End Sub
-
 
         ' File loading and updating
         Private Sub BrowseFolder()
@@ -411,9 +462,9 @@ Namespace CreoPublisherApp.ViewModels
             If dialog.ShowDialog() = True Then
                 InputPath = dialog.SelectedPath
                 LoadFilesFromFolder(InputPath)
+
             End If
         End Sub
-
 
         Private Sub BrowseFiles()
             Dim dlg As New OpenFileDialog()
@@ -430,6 +481,7 @@ Namespace CreoPublisherApp.ViewModels
                 Next
                 ' Don't set InputPath, it causes folder validation warnings
                 UpdateFilesCountText()
+                UpdateCounts()
                 RefreshFilter()
             End If
         End Sub
@@ -438,6 +490,7 @@ Namespace CreoPublisherApp.ViewModels
             Dim dialog As New VistaFolderBrowserDialog()
             If dialog.ShowDialog() = True Then
                 OutputPath = dialog.SelectedPath
+                CompleteStep(2) ' Mark step 2 as completed  
             End If
         End Sub
 
@@ -461,6 +514,7 @@ Namespace CreoPublisherApp.ViewModels
                 Next
 
                 UpdateFilesCountText()
+                UpdateCounts()
                 RefreshFilter()
 
             Catch ex As Exception
@@ -500,7 +554,7 @@ Namespace CreoPublisherApp.ViewModels
                     End If
                     hashSet.Add(hash)
                 Catch ex As Exception
-Log &= $"Error hashing file {System.IO.Path.GetFileName(path)}: {ex.Message}{Environment.NewLine}"
+                    Log &= $"Error hashing file {System.IO.Path.GetFileName(path)}: {ex.Message}{Environment.NewLine}"
                 End Try
             Next
             Return False
@@ -515,29 +569,59 @@ Log &= $"Error hashing file {System.IO.Path.GetFileName(path)}: {ex.Message}{Env
             End Using
         End Function
 
-
         Private Sub UpdateFilesCountText()
             Dim selectedCount = _files.Where(Function(f) f.IsSelected).Count()
             _filesCountText = $"{selectedCount} file(s) selected"
             OnPropertyChanged(NameOf(FilesCountText))
+            UpdateCounts()
         End Sub
 
+        Private Sub UpdateCounts()
+            _totalFilesCount = _files.Count
+            _selectedFilesCount = _files.Where(Function(f) f.IsSelected).Count()
+            _filesToRenameCount = _files.Where(Function(f) Not String.IsNullOrWhiteSpace(f.CustomPdfName) AndAlso
+                                                      f.CustomPdfName <> Path.GetFileNameWithoutExtension(f.FileName)).Count()
+
+            OnPropertyChanged(NameOf(TotalFilesCount))
+            OnPropertyChanged(NameOf(SelectedFilesCount))
+            OnPropertyChanged(NameOf(FilesToRenameCount))
+            OnPropertyChanged(NameOf(FilesDisplayText))
+
+            UpdatePublishButtonText()
+        End Sub
+
+        Private Sub UpdatePublishButtonText()
+            Dim actionText = If(IsMergeEnabled, "Merge", "Export")
+            _publishButtonText = $"🚀 {actionText} {_selectedFilesCount} Files"
+            OnPropertyChanged(NameOf(PublishButtonText))
+        End Sub
 
         ' Event handler for individual file selection
         Private Sub FileItem_PropertyChanged(sender As Object, e As PropertyChangedEventArgs)
-            If e.PropertyName = NameOf(FileItemModel.IsSelected) Then
+            If e.PropertyName = NameOf(FileItemModel.IsSelected) OrElse e.PropertyName = NameOf(FileItemModel.CustomPdfName) Then
                 UpdateFilesCountText()
             End If
         End Sub
 
         ' Selection manipulation
         Private Sub ToggleSelectDeselect()
-            _isAllSelected = Not _isAllSelected
+            ' Detect current state first by casting to FileItemModel
+            Dim allSelectedNow As Boolean = _filteredFilesView.Cast(Of FileItemModel)().
+                                    All(Function(f) f.IsSelected)
+
+            ' Toggle based on actual state
+            _isAllSelected = Not allSelectedNow
+
+            ' Apply selection
             For Each f As FileItemModel In _filteredFilesView
                 f.IsSelected = _isAllSelected
             Next
+
             UpdateFilesCountText()
+
+            ' Update button text
             SelectDeselectButtonText = If(_isAllSelected, "Deselect All", "Select All")
+
             OnPropertyChanged(NameOf(Files))
         End Sub
 
@@ -568,142 +652,149 @@ Log &= $"Error hashing file {System.IO.Path.GetFileName(path)}: {ex.Message}{Env
 
         Private Sub InvertSelectionFiles()
             For Each f As FileItemModel In _filteredFilesView
-                f.IsSelected = Not f.IsSelected
+                f.IsSelected = Not f.IsSelected 
             Next
             UpdateFilesCountText()
             OnPropertyChanged(NameOf(Files))
         End Sub
+
         ' Publish files method
         Public Sub PublishFiles()
-            Dim selectedFiles = _files.Where(Function(f) f.IsSelected).ToList()
-            If selectedFiles.Count = 0 Then
-                MessageBox.Show("No Files selected for publishing")
-                Log &= "No files selected for publishing." & Environment.NewLine
-                Return
-            End If
-            If String.IsNullOrEmpty(OutputPath) Then
-                MessageBox.Show("Please select an output folder before publishing")
-                Log &= "Please select an output folder before publishing." & Environment.NewLine
-                Return
-            End If
-            ' It checks for the filename duplication conflicts and throws error
-            Dim overwriteAll As Boolean? = Nothing
-            Dim conflictFiles As New List(Of String)
-            Dim filesToExport As New List(Of FileItemModel)
-
-            For Each file In selectedFiles
-                Dim pdfName As String = If(String.IsNullOrWhiteSpace(file.CustomPdfName),
-                       Path.GetFileNameWithoutExtension(file.FileName),
-                       Path.GetFileNameWithoutExtension(file.CustomPdfName))
-
-                Dim pdfPath As String = Path.Combine(OutputPath, pdfName & ".pdf")
-
-                If System.IO.File.Exists(pdfPath) Then
-                    If overwriteAll Is Nothing Then
-                        Dim dlg As New FileConflictDialog(pdfName & ".pdf")
-                        dlg.Owner = Application.Current.MainWindow
-                        dlg.ShowDialog()
-                        'Select case based on the user selection the skipping of files takes place
-                        Select Case dlg.UserChoice
-                            Case FileConflictDialog.ConflictResult.Yes
-                                filesToExport.Add(file) ' Add only this one
-                            Case FileConflictDialog.ConflictResult.No
-                                file.Status = "Error: File exists, not overwritten."
-                                conflictFiles.Add(pdfName & ".pdf")
-                                Continue For
-                            Case FileConflictDialog.ConflictResult.YesToAll
-                                overwriteAll = True
-                                filesToExport.Add(file)
-                            Case FileConflictDialog.ConflictResult.NoToAll
-                                overwriteAll = False
-                                file.Status = "Error: File exists, not overwritten."
-                                conflictFiles.Add(pdfName & ".pdf")
-                                Continue For
-                        End Select
-                        'If the user wants to overwrite all the files
-                    ElseIf overwriteAll = True Then
-                        filesToExport.Add(file)
-                    Else
-                        file.Status = "Error: File exists, not overwritten."
-                        conflictFiles.Add(pdfName & ".pdf")
-                        Continue For
-                    End If
-                Else
-                    filesToExport.Add(file)
+            If IsPublishing Then Return
+            IsPublishing = True
+            Try
+                Dim selectedFiles = _files.Where(Function(f) f.IsSelected).ToList()
+                If selectedFiles.Count = 0 Then
+                    MessageBox.Show("No Files selected for publishing")
+                    Log &= "No files selected for publishing." & Environment.NewLine
+                    Return
                 End If
-            Next
-            'It the user skips any files then it will show skipped files in  the messagebox
-            If conflictFiles.Any() Then
-                MessageBox.Show("The following files were skipped due to overwrite being declined:" & vbCrLf &
-String.Join(vbCrLf, conflictFiles), "Skipped Files", MessageBoxButton.OK, MessageBoxImage.Warning)
-                Log &= "Skipped files: " & String.Join(", ", conflictFiles) & vbCrLf
-            End If
+                If String.IsNullOrEmpty(OutputPath) Then
+                    MessageBox.Show("Please select an output folder before publishing")
+                    Log &= "Please select an output folder before publishing." & Environment.NewLine
+                    Return
+                End If
+                ' It checks for the filename duplication conflicts and throws error
+                Dim overwriteAll As Boolean? = Nothing
+                Dim conflictFiles As New List(Of String)
+                Dim filesToExport As New List(Of FileItemModel)
 
-            If filesToExport.Count = 0 Then
-                Log &= "No files to publish conflicting filenames." & vbCrLf
-                Return
-            End If
-            'Log &= $"Starting Creo launch and export for {selectedFiles.Count} files..." & Environment.NewLine
-            'Command to export only selected files.
-            Log &= $"Starting Creo launch and export for {filesToExport.Count} files..." & Environment.NewLine
+                For Each file In selectedFiles
+                    Dim pdfName As String = If(String.IsNullOrWhiteSpace(file.CustomPdfName),
+                           Path.GetFileNameWithoutExtension(file.FileName),
+                           Path.GetFileNameWithoutExtension(file.CustomPdfName))
 
-            'Opening the working directory and creo executable path
-            Dim workingDir = SettingsManager.Instance.WorkingDirectory
-            Dim savedCreoPath = My.Settings.CreoPath
-            If String.IsNullOrEmpty(savedCreoPath) OrElse Not File.Exists(savedCreoPath) Then
-                MessageBox.Show("Invalid or missing Creo executable path. Please set it in Settings.")
-                Log &= "Invalid or missing Creo path." & Environment.NewLine
-                Return
-            End If
+                    Dim pdfPath As String = Path.Combine(OutputPath, pdfName & ".pdf")
 
-            Dim launchSuccess = _openProe.RunProeWithPath(savedCreoPath, workingDir)
-            'If creo launch fails.
-            If Not launchSuccess Then
-                MessageBox.Show("Failed to launch Creo")
-                Log &= "Failed to launch Creo." & Environment.NewLine
-                Return
-            End If
-            'If initiliaze creo session is failed.
-            CreoSessionManager.Instance.InitializeCreoSession()
-            If CreoSessionManager.Instance.Session Is Nothing Then
-                MessageBox.Show("Failed to initialize Creo session")
-                Log &= "Failed to initialize Creo session." & Environment.NewLine
-                Return
-            End If
+                    If System.IO.File.Exists(pdfPath) Then
+                        If overwriteAll Is Nothing Then
+                            Dim dlg As New FileConflictDialog(pdfName & ".pdf")
+                            dlg.Owner = Application.Current.MainWindow
+                            dlg.ShowDialog()
+                            'Select case based on the user selection the skipping of files takes place
+                            Select Case dlg.UserChoice
+                                Case FileConflictDialog.ConflictResult.Yes
+                                    filesToExport.Add(file) ' Add only this one
+                                Case FileConflictDialog.ConflictResult.No
+                                    file.Status = "Error: File exists, not overwritten."
+                                    conflictFiles.Add(pdfName & ".pdf")
+                                    Continue For
+                                Case FileConflictDialog.ConflictResult.YesToAll
+                                    overwriteAll = True
+                                    filesToExport.Add(file)
+                                Case FileConflictDialog.ConflictResult.NoToAll
+                                    overwriteAll = False
+                                    file.Status = "Error: File exists, not overwritten."
+                                    conflictFiles.Add(pdfName & ".pdf")
+                                    Continue For
+                            End Select
+                            'If the user wants to overwrite all the files
+                        ElseIf overwriteAll = True Then
+                            filesToExport.Add(file)
+                        Else
+                            file.Status = "Error: File exists, not overwritten."
+                            conflictFiles.Add(pdfName & ".pdf")
+                            Continue For
+                        End If
+                    Else
+                        filesToExport.Add(file)
+                    End If
+                Next
+                'It the user skips any files then it will show skipped files in  the messagebox
+                If conflictFiles.Any() Then
+                    MessageBox.Show("The following files were skipped due to overwrite being declined:" & vbCrLf &
+    String.Join(vbCrLf, conflictFiles), "Skipped Files", MessageBoxButton.OK, MessageBoxImage.Warning)
+                    Log &= "Skipped files: " & String.Join(", ", conflictFiles) & vbCrLf
+                End If
 
-            _proeCommonFuncs.setConfigOption("display_planes", "no")
-            _proeCommonFuncs.setConfigOption("display_axes", "no")
-            _proeCommonFuncs.setConfigOption("display_coord_sys", "no")
-            ' Ask user about single vs. multiple PDF export
+                If filesToExport.Count = 0 Then
+                    Log &= "No files to publish conflicting filenames." & vbCrLf
+                    Return
+                End If
+                'Log &= $"Starting Creo launch and export for {selectedFiles.Count} files..." & Environment.NewLine
+                'Command to export only selected files.
+                Log &= $"Starting Creo launch and export for {filesToExport.Count} files..." & Environment.NewLine
 
-            _proeCommonFuncs.ExportAllDrawingsAsPDF(filesToExport, OutputPath, IsMergeEnabled)
+                'Opening the working directory and creo executable path
+                Dim workingDir = SettingsManager.Instance.WorkingDirectory
+                Dim savedCreoPath = My.Settings.CreoPath
+                If String.IsNullOrEmpty(savedCreoPath) OrElse Not File.Exists(savedCreoPath) Then
+                    MessageBox.Show("Invalid or missing Creo executable path. Please set it in Settings.")
+                    Log &= "Invalid or missing Creo path." & Environment.NewLine
+                    Return
+                End If
 
-            _openProe.KillCreO()
-            'After exporting all the selected files and publishing.
-            For Each file In selectedFiles
-                OnPropertyChanged(NameOf(Files))
-            Next
-            Log &= "Publishing complete." & Environment.NewLine
+                Dim launchSuccess = _openProe.RunProeWithPath(savedCreoPath, workingDir)
+                'If creo launch fails.
+                If Not launchSuccess Then
+                    MessageBox.Show("Failed to launch Creo")
+                    Log &= "Failed to launch Creo." & Environment.NewLine
+                    Return
+                End If
+                'If initiliaze creo session is failed.
+                CreoSessionManager.Instance.InitializeCreoSession()
+                If CreoSessionManager.Instance.Session Is Nothing Then
+                    MessageBox.Show("Failed to initialize Creo session")
+                    Log &= "Failed to initialize Creo session." & Environment.NewLine
+                    Return
+                End If
 
-            '  Export report
-            ExportReportToCsv(selectedFiles)
-            MessageBox.Show($"PDF export completed successfully for {filesToExport.Count} files!" & vbCrLf &
-                            "A detailed report has been saved in the output folder.",
-                            "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information)
+                _proeCommonFuncs.setConfigOption("display_planes", "no")
+                _proeCommonFuncs.setConfigOption("display_axes", "no")
+                _proeCommonFuncs.setConfigOption("display_coord_sys", "no")
+                ' Ask user about single vs. multiple PDF export
 
-            If IsCliMode Then
-                Try
-                    Dim logFolder = Path.Combine(OutputPath, "Logs")
-                    Directory.CreateDirectory(logFolder)
-                    Dim logFile = Path.Combine(logFolder, $"CLIPublishLog_{DateTime.Now:yyyyMMdd_HHmmss}.txt")
-                    File.WriteAllText(logFile, Log)
-                Catch ex As Exception
-                    ' Ignore logging errors in CLI
-                End Try
-            End If
+                _proeCommonFuncs.ExportAllDrawingsAsPDF(filesToExport, OutputPath, IsMergeEnabled)
+                '_proeCommonFuncs.ExportAllDrawingsAsSTEP(filesToExport, OutputPath)
+
+                _openProe.KillCreO()
+                'After exporting all the selected files and publishing.
+                For Each file In selectedFiles
+                    OnPropertyChanged(NameOf(Files))
+                Next
+                Log &= "Publishing complete." & Environment.NewLine
+
+                '  Export report
+                ExportReportToCsv(selectedFiles)
+                MessageBox.Show($"PDF export completed suc cessfully for {filesToExport.Count} files!" & vbCrLf &
+                                "A detailed report has been saved in the output folder.",
+                                "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information)
+
+                If IsCliMode Then
+                    Try
+                        Dim logFolder = Path.Combine(OutputPath, "Logs")
+                        Directory.CreateDirectory(logFolder)
+                        Dim logFile = Path.Combine(logFolder, $"CLIPublishLog_{DateTime.Now:yyyyMMdd_HHmmss}.txt")
+                        File.WriteAllText(logFile, Log)
+                    Catch ex As Exception
+                        ' Ignore logging errors in CLI
+                    End Try
+
+                End If
+            Finally
+                IsPublishing = False
+            End Try
         End Sub
-
-
         ' Open settings
         Private Sub OpenSettingsWindow()
             Dim settingsWindow As New SettingsWindow()
@@ -716,7 +807,7 @@ String.Join(vbCrLf, conflictFiles), "Skipped Files", MessageBoxButton.OK, Messag
         Protected Sub OnPropertyChanged(<CallerMemberName> Optional propertyName As String = Nothing)
             RaiseEvent PropertyChanged(Me, New PropertyChangedEventArgs(propertyName))
         End Sub
-        ' Erase ALL models in session by closing active window first
+
         'Adds files and folders dropped into the app.
         ' Accepts .drw files and .drw files inside dropped folders (non-recursive).
         ''' <param name="paths">Array of dropped paths (files or folders).</param>
@@ -757,7 +848,8 @@ String.Join(vbCrLf, conflictFiles), "Skipped Files", MessageBoxButton.OK, Messag
                         Continue For
                     End If
 
-                    Dim drwFiles = Directory.GetFiles(folderPath, "*.drw", SearchOption.TopDirectoryOnly)
+                    Dim drwFiles = Directory.GetFiles(folderPath, "*.drw", SearchOption.AllDirectories)
+
                     For Each file In drwFiles
                         AddFileIfNotExists(file)
                         addedFilesCount += 1
@@ -766,16 +858,15 @@ String.Join(vbCrLf, conflictFiles), "Skipped Files", MessageBoxButton.OK, Messag
 
                 RefreshFilter()
                 UpdateFilesCountText()
+
                 OnPropertyChanged(NameOf(Files))
                 OnPropertyChanged(NameOf(FilteredFiles))
-
+                UpdateCounts()
                 Log &= $"Total files added from drop: {addedFilesCount}{Environment.NewLine}"
             Catch ex As Exception
                 Log &= $"Error adding dropped files: {ex.Message}{Environment.NewLine}"
             End Try
         End Sub
-
-
 
         ' Adds a file to the _files collection if it does not already exist.
         ''' <param name="filePath">Full file path</param>
@@ -785,8 +876,11 @@ String.Join(vbCrLf, conflictFiles), "Skipped Files", MessageBoxButton.OK, Messag
                 Dim fileModel As New FileItemModel(filePath)
                 AddHandler fileModel.PropertyChanged, AddressOf FileItem_PropertyChanged
                 _files.Add(fileModel)
+
             End If
+            CompleteStep(3) ' Mark step 1 as completed
         End Sub
+
         'Export to CSV File Method
         Private Sub ExportReportToCsv(files As List(Of FileItemModel))
             Try
@@ -794,57 +888,83 @@ String.Join(vbCrLf, conflictFiles), "Skipped Files", MessageBoxButton.OK, Messag
                 Dim generatedTime As String = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
 
                 ' ==== CSV EXPORT ====
-                Dim csvPath = Path.Combine(OutputPath, $"PublishReport_{timestamp}.csv")
+                Dim csvPath = Path.Combine(OutputPath, $"BulkPDFPublisherReport_{timestamp}.csv")
                 Using writer As New StreamWriter(csvPath, False)
-                    ' Title and spacing
-                    writer.WriteLine("Adroitec Engineering Solutions Pvt. Ltd - Bulk PDF Publisher Report")
+
+                    ' ==== TITLE BLOCK ====
+                    writer.WriteLine("Adroitec Engineering Solutions Pvt. Ltd")
+                    writer.WriteLine("Bulk PDF Publisher - Report")
+                    writer.WriteLine("Generated On:," & generatedTime)
+                    writer.WriteLine("Report Version: 1.0")
+                    writer.WriteLine(New String("-"c, 80))
                     writer.WriteLine()
 
-                    ' Header
-                    writer.WriteLine("File Name,Custom PDF Name,Status,Created Date,Modified Date,File Size,PDF Generated Timestamp")
+                    ' ==== COLUMN HEADERS ====
+                    writer.WriteLine("File Name,Custom PDF Name,Status,Created Date,Modified Date,File Size (KB),PDF Generated Timestamp")
 
-                    ' Rows
+                    ' ==== ROWS ====
                     For Each file In files
                         Dim line As String = String.Join(",",
-                    """" & file.FileName & """",
-                    """" & file.CustomPdfName & """",
-                    """" & file.Status & """",
+                    $"""{file.FileName}""",
+                    $"""{file.CustomPdfName}""",
+                    $"""{file.Status}""",
                     file.CreatedDate,
                     file.ModifiedDate,
                     file.FileSize,
-                    """" & generatedTime & """")
+                    $"""{generatedTime}""")
                         writer.WriteLine(line)
                     Next
+
+                    writer.WriteLine()
+
+                    ' ==== FOOTER SUMMARY ====
+                    Dim totalFiles = files.Count
+                    Dim successCount As Integer = System.Linq.Enumerable.Count(files,
+                    Function(f) Not String.IsNullOrEmpty(f.Status) AndAlso
+                f.Status.IndexOf("success", StringComparison.OrdinalIgnoreCase) >= 0)
+                    Dim failCount = totalFiles - successCount
+                    writer.WriteLine(New String("-"c, 80))
+                    writer.WriteLine($"Summary, Total Files: {totalFiles}, Success: {successCount}, Failed: {failCount}")
+                    writer.WriteLine(New String("-"c, 80))
                 End Using
+
+                ' Update tracking properties
+                _lastExportedCsvPath = csvPath
+                ReportFilePath = csvPath
+
+                ' Log info
+                Log &= $"Last exported CSV path stored as: {_lastExportedCsvPath}{Environment.NewLine}"
                 Log &= $"CSV report saved to: {csvPath}{Environment.NewLine}"
 
-
+                ' === Notify OpenReportCommand CanExecute changed ===
+                If _OpenReportCommand IsNot Nothing AndAlso TypeOf _OpenReportCommand Is RelayCommand Then
+                    CType(_OpenReportCommand, RelayCommand).RaiseCanExecuteChanged()
+                End If
 
             Catch ex As Exception
                 Log &= $"Error generating report: {ex.Message}{Environment.NewLine}"
             End Try
-        End Sub        'Update File Method for Pagination 
-        Private Sub UpdatePagedFiles()
-            If _filteredFiles Is Nothing Then Return
 
-            Dim skip = (_currentPage - 1) * _pageSize
-            Dim pageItems = _filteredFiles.Skip(skip).Take(_pageSize).ToList()
-            PagedFiles = New ObservableCollection(Of FileItemModel)(pageItems)
-
-            OnPropertyChanged(NameOf(CurrentPage))
-            OnPropertyChanged(NameOf(TotalPages))
+            CompleteStep(4) ' Mark step 4 as completed
         End Sub
-        Private Sub TryGoToPage()
-            Dim pageNum As Integer
-            If Integer.TryParse(CurrentPageInput, pageNum) Then
-                If pageNum >= 1 AndAlso pageNum <= TotalPages Then
-                    CurrentPage = pageNum
+        Private Sub ExportReportCommandExecute(obj As Object)
+            ' Assuming Files is ObservableCollection(Of FileItemModel)
+            ExportReportToCsv(Files.ToList())
+        End Sub
+        Private Function CanOpenReport(obj As Object) As Boolean
+            Return Not String.IsNullOrEmpty(_lastExportedCsvPath) AndAlso File.Exists(_lastExportedCsvPath)
+        End Function
+
+        Private Sub OpenReportCommandExecute(obj As Object)
+            Try
+                If CanOpenReport(obj) Then
+                    Process.Start("notepad.exe", _lastExportedCsvPath)
                 Else
-                    MessageBox.Show($"Page number must be between 1 and {TotalPages}.", "Invalid Page", MessageBoxButton.OK, MessageBoxImage.Warning)
+                    MessageBox.Show("No exported report found. Please export the report first.", "Info", MessageBoxButton.OK, MessageBoxImage.Information)
                 End If
-            Else
-                MessageBox.Show("Please enter a valid numeric page number.", "Invalid Input", MessageBoxButton.OK, MessageBoxImage.Warning)
-            End If
+            Catch ex As Exception
+                Log &= $"Error opening CSV report: {ex.Message}{Environment.NewLine}"
+            End Try
         End Sub
         Private Sub UpdateWorkingDirectory(directoryPath As String)
             Try
@@ -858,6 +978,28 @@ String.Join(vbCrLf, conflictFiles), "Skipped Files", MessageBoxButton.OK, Messag
                 Log &= $"Working directory updated to: {directoryPath}{Environment.NewLine}"
             Catch ex As Exception
                 Log &= $"Error updating working directory: {ex.Message}{Environment.NewLine}"
+            End Try
+        End Sub
+        Public Sub CompleteStep(stepNumber As Integer)
+            Select Case stepNumber
+                Case 1
+                    IsStep1Completed = True
+                Case 2
+                    IsStep2Completed = True
+                Case 3
+                    IsStep3Completed = True
+                Case 4
+
+                    IsStep4Completed = True
+            End Select
+        End Sub
+        Private Sub OpenReport(param As Object)
+            Try
+                Process.Start(New ProcessStartInfo(ReportFilePath) With {
+                    .UseShellExecute = True
+                })
+            Catch ex As Exception
+                Log &= $"Could not open report: {ex.Message}{Environment.NewLine}"
             End Try
         End Sub
 
