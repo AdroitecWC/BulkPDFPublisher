@@ -767,6 +767,7 @@ Namespace CreoPublisherApp.ViewModels
                 _proeCommonFuncs.ExportAllDrawingsAsPDF(filesToExport, OutputPath, IsMergeEnabled)
                 '_proeCommonFuncs.ExportAllDrawingsAsSTEP(filesToExport, OutputPath)
 
+
                 _openProe.KillCreO()
                 'After exporting all the selected files and publishing.
                 For Each file In selectedFiles

@@ -77,14 +77,31 @@ Public Class ProECommonFunctionalites
 
                 model.Display()
                 model.Export(pdfPath, pdfInstr)
+                ' after model.Export(...)
+                If SettingsManager.Instance.EnableWatermark Then
+                    Dim wm = SettingsManager.Instance
+                    Try
+                        ' Overwrite original with watermarked version (helper uses temp file)
+                        WatermarkHelper.AddWatermarkToPdf(pdfPath, pdfPath, wm.WatermarkText, CSng(wm.WatermarkOpacity), CSng(wm.WatermarkFontSize), 45.0F, wm.WatermarkColor, wm.WatermarkPosition)
+                    Catch ex As Exception
+                        ' log and continue
+                        item.Status = "Exported but watermark failed: " & ex.Message
+                        exportedPdfPaths.Add(pdfPath)
+                        Continue For
+                    End Try
+                End If
+
+                item.Status = "Success"
+                exportedPdfPaths.Add(pdfPath)
+
 
                 Dim activeWindow As IpfcWindow = session.CurrentWindow
                 If activeWindow IsNot Nothing Then activeWindow.Close()
 
                 session.EraseUndisplayedModels()
 
-                item.Status = "Success"
-                exportedPdfPaths.Add(pdfPath)
+                'item.Status = "Success"
+                'exportedPdfPaths.Add(pdfPath)
 
             Catch ex As Exception
                 item.Status = "Error: " & ex.Message
