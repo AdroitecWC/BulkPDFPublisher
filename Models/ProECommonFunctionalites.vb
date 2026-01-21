@@ -1,9 +1,8 @@
 ﻿Imports System.IO
-Imports System.Security.AccessControl
-Imports PdfSharp.Pdf
-Imports PdfSharp.Pdf.IO
+Imports iTextSharp.text
+Imports iTextSharp.text.pdf
 Imports pfcls
-Imports PdfSharp.Drawing
+
 Public Class ProECommonFunctionalites
 
     ' Set Creo config option
@@ -77,63 +76,58 @@ Public Class ProECommonFunctionalites
 
                 model.Display()
                 model.Export(pdfPath, pdfInstr)
-                ' after model.Export(...)
-                If SettingsManager.Instance.EnableWatermark Then
-                    Dim wm = SettingsManager.Instance
-                    Try
-                        ' Overwrite original with watermarked version (helper uses temp file)
-                        WatermarkHelper.AddWatermarkToPdf(pdfPath, pdfPath, wm.WatermarkText, CSng(wm.WatermarkOpacity), CSng(wm.WatermarkFontSize), 45.0F, wm.WatermarkColor, wm.WatermarkPosition)
-                    Catch ex As Exception
-                        ' log and continue
-                        item.Status = "Exported but watermark failed: " & ex.Message
-                        exportedPdfPaths.Add(pdfPath)
-                        Continue For
-                    End Try
-                End If
-
-                item.Status = "Success"
-                exportedPdfPaths.Add(pdfPath)
-
 
                 Dim activeWindow As IpfcWindow = session.CurrentWindow
                 If activeWindow IsNot Nothing Then activeWindow.Close()
 
                 session.EraseUndisplayedModels()
 
-                'item.Status = "Success"
-                'exportedPdfPaths.Add(pdfPath)
+                item.Status = "Success"
+                exportedPdfPaths.Add(pdfPath)
 
             Catch ex As Exception
                 item.Status = "Error: " & ex.Message
             End Try
         Next
         ' Only merge if user requested
-        If isMergeEnabled Then
+        If isMergeEnabled AndAlso exportedPdfPaths.Any() Then
             Try
                 Dim mergedPdfPath = Path.Combine(outputFolder, "MergedDrawings.pdf")
-                Using outputDocument As New PdfDocument()
-                    For Each pdfFile In exportedPdfPaths
-                        If File.Exists(pdfFile) Then
-                            Using inputDocument = PdfReader.Open(pdfFile, PdfDocumentOpenMode.Import)
-                                For i = 0 To inputDocument.PageCount - 1
-                                    outputDocument.AddPage(inputDocument.Pages(i))
-                                Next
-                            End Using
-                        End If
-                    Next
-                    outputDocument.Save(mergedPdfPath)
 
-                    ' Optionally delete individual PDFs after merging
-                    ' Delete individual PDFs after merging
-                    For Each filePath In exportedPdfPaths
-                        If File.Exists(filePath) Then
-                            File.Delete(filePath)
-                        End If
-                    Next
+                Using fs As New FileStream(mergedPdfPath, FileMode.Create, FileAccess.Write, FileShare.None)
+                    Using document As New Document()
+                        Using copy As New PdfSmartCopy(document, fs)
 
+                            document.Open()
+
+                            For Each pdfFile In exportedPdfPaths
+                                If Not File.Exists(pdfFile) Then Continue For
+
+                                Using reader As New PdfReader(pdfFile)
+                                    For pageNum As Integer = 1 To reader.NumberOfPages
+                                        copy.AddPage(copy.GetImportedPage(reader, pageNum))
+                                    Next
+                                End Using
+                            Next
+
+                            document.Close()
+                        End Using
+                    End Using
                 End Using
+
+                ' Delete individual PDFs ONLY after successful merge
+                For Each filePath In exportedPdfPaths
+                    If File.Exists(filePath) Then
+                        File.Delete(filePath)
+                    End If
+                Next
+
             Catch mergeEx As Exception
-                MessageBox.Show("PDF merge failed: " & mergeEx.Message)
+                MessageBox.Show(
+            "PDF merge failed:" & vbCrLf & mergeEx.Message,
+            "Merge Error",
+            MessageBoxButton.OK,
+            MessageBoxImage.Error)
             End Try
         End If
 

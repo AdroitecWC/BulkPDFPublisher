@@ -74,6 +74,12 @@ Namespace CreoPublisherApp.ViewModels
             OpenReportCommand = New RelayCommand(AddressOf OpenReportCommandExecute, AddressOf CanOpenReport)
         End Sub
 
+        ' Helper class
+        Private Class DrwIterationInfo
+            Public Property FullPath As String
+            Public Property BaseName As String
+            Public Property Iteration As Integer
+        End Class
 
 
         ' Properties
@@ -498,17 +504,53 @@ Namespace CreoPublisherApp.ViewModels
             Try
                 _files.Clear()
 
-                ' Get all .drw files (including .drw.1, .drw.2, etc.)
-                Dim filesInFolder = Directory.GetFiles(folderPath).
-            Where(Function(f) Regex.IsMatch(System.IO.Path.GetFileName(f), "\.drw(\.\d+)?$", RegexOptions.IgnoreCase)).
+                ' STEP 1: Get all .drw and .drw.X files
+                Dim allDrwFiles = Directory.GetFiles(folderPath).
+            Where(Function(f) Regex.IsMatch(Path.GetFileName(f),
+                "\.drw(\.\d+)?$", RegexOptions.IgnoreCase)).
             ToList()
 
-                ' Remove duplicates by content hash
-                Dim uniqueFiles = RemoveDuplicateFiles(filesInFolder)
+                ' STEP 2: Parse base name and iteration
+                Dim parsedFiles As New List(Of DrwIterationInfo)
 
-                ' Load remaining files
-                For Each filePath In uniqueFiles
-                    Dim fileModel As New FileItemModel(filePath)
+                For Each filePath In allDrwFiles
+                    Dim fileName = Path.GetFileName(filePath)
+
+                    ' Matches:
+                    ' 52161356.drw
+                    ' 52161356.drw.1
+                    ' 52161356.drw.2
+                    Dim match = Regex.Match(fileName,
+                "^(?<base>.+?)\.drw(?:\.(?<iter>\d+))?$",
+                RegexOptions.IgnoreCase)
+
+                    If match.Success Then
+                        Dim baseName As String = match.Groups("base").Value
+                        Dim iteration As Integer = 0
+
+                        If match.Groups("iter").Success Then
+                            Integer.TryParse(match.Groups("iter").Value, iteration)
+                        End If
+
+                        parsedFiles.Add(New DrwIterationInfo With {
+                    .FullPath = filePath,
+                    .BaseName = baseName,
+                    .Iteration = iteration
+                })
+                    End If
+                Next
+
+                ' STEP 3: Select ONLY the latest iteration per base drawing
+                Dim latestFiles = parsedFiles.
+            GroupBy(Function(f) f.BaseName).
+            Select(Function(g) g.
+                OrderByDescending(Function(x) x.Iteration).
+                First()).
+            ToList()
+
+                ' STEP 4: Load only latest files into grid
+                For Each fileInfo In latestFiles
+                    Dim fileModel As New FileItemModel(fileInfo.FullPath)
                     AddHandler fileModel.PropertyChanged, AddressOf FileItem_PropertyChanged
                     _files.Add(fileModel)
                 Next
@@ -756,6 +798,12 @@ Namespace CreoPublisherApp.ViewModels
                 If CreoSessionManager.Instance.Session Is Nothing Then
                     MessageBox.Show("Failed to initialize Creo session")
                     Log &= "Failed to initialize Creo session." & Environment.NewLine
+                    Return
+                End If
+                ' NOW enforce license
+                If Not LicenseState.IsValid Then
+                    MessageBox.Show("License inactive. Export blocked.")
+                    _openProe.KillCreO()
                     Return
                 End If
 

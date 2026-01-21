@@ -1,8 +1,9 @@
 ﻿<Window x:Class="CreoPublisherApp.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Creo Executable Settings"
-        Height="600" Width="700"
+        Title="Application Settings"
+        Height="600"
+        Width="700"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         Background="#f5f5f5"
@@ -11,7 +12,6 @@
         Loaded="SettingsWindow_Loaded">
 
     <Window.Resources>
-        <!-- Global ToolTip Style -->
         <Style TargetType="ToolTip">
             <Setter Property="Background" Value="#333"/>
             <Setter Property="Foreground" Value="White"/>
@@ -23,190 +23,219 @@
         </Style>
     </Window.Resources>
 
-    <Grid Margin="25">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <!-- Header -->
-            <RowDefinition Height="Auto"/>
-            <!-- Creo path label -->
-            <RowDefinition Height="Auto"/>
-            <!-- Creo path + browse -->
-            <RowDefinition Height="Auto"/>
-            <!-- Working directory label -->
-            <RowDefinition Height="Auto"/>
-            <!-- Working directory + browse -->
-            <RowDefinition Height="Auto"/>
-            <!-- Watermark section header -->
-            <RowDefinition Height="Auto"/>
-            <!-- Enable watermark checkbox -->
-            <RowDefinition Height="Auto"/>
-            <!-- Watermark inputs -->
-            <RowDefinition Height="Auto"/>
-            <!-- Action buttons -->
-        </Grid.RowDefinitions>
+    <TabControl Margin="15">
 
-        <!-- Header -->
-        <TextBlock Grid.Row="0"
-                   Text="Configure Creo Executable Path"
+        <!-- ===================================================== -->
+        <!-- GENERAL SETTINGS TAB -->
+        <!-- ===================================================== -->
+        <TabItem Header="General">
+
+            <Grid Margin="25">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Header -->
+                <TextBlock Grid.Row="0"
+                           Text="Configure Creo Executable Path"
+                           FontSize="20"
+                           FontWeight="Bold"
+                           Foreground="#2c3e50"
+                           Margin="0,0,0,20"/>
+
+                <!-- Creo Path Label -->
+                <TextBlock Grid.Row="1"
+                           Text="Full path to parametric.exe:"
+                           FontWeight="SemiBold"
+                           Margin="0,0,0,8"
+                           Foreground="#333"/>
+
+                <!-- Creo Path -->
+                <Grid Grid.Row="2" Margin="0,0,0,20">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBox Text="{Binding CreoPath, UpdateSourceTrigger=PropertyChanged}"
+                             Padding="6"
+                             Grid.Column="0"
+                             Margin="0,0,10,0"/>
+
+                    <Button Content="Browse..."
+                            Width="100"
+                            Grid.Column="1"
+                            Command="{Binding BrowseCommand}"
+                            Background="#3498db"
+                            Foreground="White"
+                            Cursor="Hand"/>
+                </Grid>
+
+                <!-- Working Directory -->
+                <TextBlock Grid.Row="3"
+                           Text="Working directory for publishing:"
+                           FontWeight="SemiBold"
+                           Margin="0,0,0,8"/>
+
+                <Grid Grid.Row="4" Margin="0,0,0,20">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBox Text="{Binding WorkingDirectory, UpdateSourceTrigger=PropertyChanged}"
+                             Padding="6"
+                             Grid.Column="0"
+                             Margin="0,0,10,0"/>
+
+                    <Button Content="Browse..."
+                            Width="100"
+                            Grid.Column="1"
+                            Command="{Binding BrowseWorkingDirectoryCommand}"
+                            Background="#3498db"
+                            Foreground="White"
+                            Cursor="Hand"/>
+                </Grid>
+
+                <!-- Watermark -->
+                <TextBlock Grid.Row="5"
+                           Text="Watermark Settings"
+                           FontSize="16"
+                           FontWeight="Bold"
+                           Margin="0,10,0,10"/>
+
+                <CheckBox Grid.Row="6"
+                          Content="Enable Watermark"
+                          IsChecked="{Binding EnableWatermark}"
+                          Margin="0,0,0,10"/>
+
+                <StackPanel Grid.Row="7">
+
+                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                        <TextBlock Text="Watermark Text:" Width="150"/>
+                        <TextBox Text="{Binding WatermarkText}" Width="300"/>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                        <TextBlock Text="Font Size:" Width="150"/>
+                        <TextBox Text="{Binding WatermarkFontSize}" Width="80"/>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                        <TextBlock Text="Opacity (0-1):" Width="150"/>
+                        <Slider Minimum="0"
+                                Maximum="1"
+                                Value="{Binding WatermarkOpacity}"
+                                Width="150"/>
+                        <TextBlock Text="{Binding WatermarkOpacity, StringFormat=N2}"
+                                   Margin="10,0,0,0"/>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                        <TextBlock Text="Position:" Width="150"/>
+                        <ComboBox Width="200"
+                                  ItemsSource="{Binding WatermarkPositions}"
+                                  SelectedItem="{Binding WatermarkPosition}"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Buttons -->
+                <StackPanel Grid.Row="8"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            Margin="0,20,0,0">
+
+                    <Button Content="Save"
+                            Width="80"
+                            Margin="0,0,10,0"
+                            Command="{Binding SaveCommand}"
+                            Background="#27ae60"
+                            Foreground="White"/>
+
+                    <Button Content="Cancel"
+                            Width="80"
+                            Margin="0,0,10,0"
+                            Command="{Binding CancelCommand}"
+                            Background="#95a5a6"
+                            Foreground="White"/>
+
+                    <Button Content="OK"
+                            Width="80"
+                            Command="{Binding ConfirmCommand}"
+                            Background="#2980b9"
+                            Foreground="White"/>
+                </StackPanel>
+
+            </Grid>
+        </TabItem>
+
+        <!-- ===================================================== -->
+        <!-- LICENSE TAB -->
+        <!-- ===================================================== -->
+        <TabItem Header="License">
+
+            <Grid Margin="25">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Header -->
+                <TextBlock Text="License Information"
                    FontSize="20"
                    FontWeight="Bold"
-                   Foreground="#2c3e50"
                    Margin="0,0,0,20"/>
 
-        <!-- Creo Path Label -->
-        <TextBlock Grid.Row="1"
-                   Text="Full path to parametric.exe:"
-                   FontWeight="SemiBold"
-                   Margin="0,0,0,8"
-                   Foreground="#333"/>
+                <!-- License Info -->
+                <StackPanel Grid.Row="1" Margin="0,0,0,20">
+                    <TextBlock Text="{Binding LicenseStatus}" FontWeight="SemiBold"/>
+                    <TextBlock Text="{Binding LicenseSystemName}" Margin="0,5,0,0"/>
+                    <TextBlock Text="{Binding LicenseExpiry}" Margin="0,5,0,0"/>
+                </StackPanel>
 
-        <!-- Creo Path TextBox + Browse -->
-        <Grid Grid.Row="2" Margin="0,0,0,20">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
+                <!-- Action Buttons -->
+                <StackPanel Grid.Row="2" Orientation="Vertical">
 
-            <TextBox Text="{Binding CreoPath, UpdateSourceTrigger=PropertyChanged}"
-                     FontSize="14"
-                     Padding="6"
-                     Grid.Column="0"
-                     Margin="0,0,10,0"
-                     Background="White"
-                     BorderBrush="#ccc"
-                     BorderThickness="1">
-                <TextBox.ToolTip>
-                    Current Creo executable path. You can paste or browse a new path.
-                </TextBox.ToolTip>
-            </TextBox>
-
-            <Button Content="Browse..."
-                    Width="100"
-                    Grid.Column="1"
-                    Command="{Binding BrowseCommand}"
-                    Padding="4"
-                    Background="#3498db"
+                    <Button Content="Deactivate License"
+                    Width="200"
+                    Height="32"
+                    Margin="0,0,0,10"
+                    Background="#c0392b"
                     Foreground="White"
-                    BorderBrush="#2980b9"
-                    BorderThickness="1"
-                    Cursor="Hand" />
-        </Grid>
-
-        <!-- Working Directory Label -->
-        <TextBlock Grid.Row="3"
-                   Text="Working directory for publishing:"
-                   FontWeight="SemiBold"
-                   Margin="0,0,0,8"
-                   Foreground="#333"/>
-
-        <!-- Working Directory Path + Browse Button -->
-        <Grid Grid.Row="4" Margin="0,0,0,20">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-
-            <TextBox Text="{Binding WorkingDirectory, UpdateSourceTrigger=PropertyChanged}"
-                     FontSize="14"
-                     Padding="6"
-                     Grid.Column="0"
-                     Margin="0,0,10,0"
-                     Background="White"
-                     BorderBrush="#ccc"
-                     BorderThickness="1"/>
-
-            <Button Content="Browse..."
-                    Width="100"
-                    Grid.Column="1"
-                    Command="{Binding BrowseWorkingDirectoryCommand}"
-                    Padding="4"
-                    Background="#3498db"
-                    Foreground="White"
-                    BorderBrush="#2980b9"
-                    BorderThickness="1"
-                    Cursor="Hand"/>
-        </Grid>
-
-        <!-- Watermark Section Header -->
-        <TextBlock Grid.Row="5"
-                   Text="Watermark Settings"
-                   FontSize="16"
-                   FontWeight="Bold"
-                   Foreground="#2c3e50"
-                   Margin="0,20,0,10"/>
-
-        <!-- Enable Watermark Checkbox -->
-        <CheckBox Grid.Row="6"
-                  Content="Enable Watermark"
-                  IsChecked="{Binding EnableWatermark}"
-                  FontWeight="SemiBold"
-                  Margin="0,0,0,10"/>
-
-        <!-- Watermark Controls -->
-        <StackPanel Grid.Row="7" Orientation="Vertical" Margin="0,0,0,20">
-            <StackPanel Orientation="Horizontal" Margin="0,5,0,5">
-                <TextBlock Text="Watermark Text:" Width="150" VerticalAlignment="Center"/>
-                <TextBox Text="{Binding WatermarkText, UpdateSourceTrigger=PropertyChanged}"
-                         Width="300" Padding="6"/>
-            </StackPanel>
-
-            <StackPanel Orientation="Horizontal" Margin="0,5,0,5">
-                <TextBlock Text="Font Size:" Width="150" VerticalAlignment="Center"/>
-                <TextBox Text="{Binding WatermarkFontSize, UpdateSourceTrigger=PropertyChanged}"
-                         Width="80" Padding="6"/>
-            </StackPanel>
-
-            <StackPanel Orientation="Horizontal" Margin="0,5,0,5">
-                <TextBlock Text="Opacity (0-1):" Width="150" VerticalAlignment="Center"/>
-                <Slider Minimum="0" Maximum="1" Value="{Binding WatermarkOpacity, Mode=TwoWay}" Width="150" TickFrequency="0.1" IsSnapToTickEnabled="True"/>
-                <TextBlock Text="{Binding WatermarkOpacity, StringFormat=N2}" Width="50" Margin="10,0,0,0"/>
-            </StackPanel>
-
-
-            <StackPanel Orientation="Horizontal" Margin="0,5,0,5">
-                <TextBlock Text="Position:" Width="150" VerticalAlignment="Center"/>
-                <ComboBox Width="200"
-                          ItemsSource="{Binding WatermarkPositions}"
-                          SelectedItem="{Binding WatermarkPosition}"
-                          Padding="4"/>
-            </StackPanel>
-        </StackPanel>
-
-        <!-- Action Buttons -->
-        <StackPanel Grid.Row="8"
-                    Orientation="Horizontal"
-                    HorizontalAlignment="Right"
-                    Margin="0,10,0,0">
-
-            <Button Content="Save"
-                    Width="80"
-                    Margin="0,0,10,0"
-                    Command="{Binding SaveCommand}"
-                    Background="#27ae60"
-                    Foreground="White"
-                    BorderBrush="#1e8449"
-                    BorderThickness="1"
+                    Command="{Binding DeactivateLicenseCommand}"
                     Cursor="Hand"/>
 
-            <Button Content="Cancel"
-                    Width="80"
-                    Margin="0,0,10,0"
-                    Command="{Binding CancelCommand}"
-                    Background="#95a5a6"
-                    Foreground="White"
-                    BorderBrush="#7f8c8d"
-                    BorderThickness="1"
-                    Cursor="Hand"/>
-
-            <Button Content="OK"
-                    Width="80"
-                    Command="{Binding ConfirmCommand}"
+                    <Button Content="Transfer License"
+                    Width="200"
+                    Height="32"
                     Background="#2980b9"
                     Foreground="White"
-                    BorderBrush="#2471a3"
-                    BorderThickness="1"
+                    Command="{Binding TransferLicenseCommand}"
                     Cursor="Hand"/>
-        </StackPanel>
 
-    </Grid>
+                </StackPanel>
+
+                <!-- Warning -->
+                <TextBlock Grid.Row="3"
+                   Text="⚠ Transfer will deactivate license on this system"
+                   Foreground="DarkRed"
+                   Margin="0,10,0,0"
+                   FontSize="11"/>
+
+            </Grid>
+
+        </TabItem>
+
+    </TabControl>
+
 </Window>

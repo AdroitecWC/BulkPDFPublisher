@@ -1,0 +1,132 @@
+﻿<Window x:Class="BulkPdfPublisher.HelpWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="About Bulk PDF Publisher"
+        Height="430"
+        Width="560"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize">
+
+	<!-- ================= WINDOW BACKGROUND ================= -->
+	<Window.Background>
+		<LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+			<GradientStop Color="#2A2A2A" Offset="0"/>
+			<GradientStop Color="#1C1C1C" Offset="1"/>
+		</LinearGradientBrush>
+	</Window.Background>
+
+	<!-- ================= CARD SURFACE ================= -->
+	<Border Padding="24"
+            CornerRadius="12">
+
+		<Border.Background>
+			<SolidColorBrush Color="#252526"/>
+		</Border.Background>
+
+		<!-- Soft shadow for elevation -->
+		<Border.Effect>
+			<DropShadowEffect Color="#000000"
+                              BlurRadius="20"
+                              ShadowDepth="0"
+                              Opacity="0.45"/>
+		</Border.Effect>
+
+		<Grid>
+			<Grid.RowDefinitions>
+				<RowDefinition Height="Auto"/>
+				<RowDefinition Height="*"/>
+				<RowDefinition Height="Auto"/>
+			</Grid.RowDefinitions>
+
+			<!-- ================= HEADER ================= -->
+			<Grid Grid.Row="0" Margin="0,0,0,16">
+				<Grid.ColumnDefinitions>
+					<ColumnDefinition Width="*"/>
+					<ColumnDefinition Width="Auto"/>
+				</Grid.ColumnDefinitions>
+
+				<!-- Title + Version -->
+				<StackPanel Grid.Column="0" VerticalAlignment="Center">
+					<TextBlock Text="Bulk PDF Publisher"
+                               FontSize="20"
+                               FontWeight="SemiBold"
+                               Foreground="White"/>
+
+					<TextBlock Text="Version 2.0.01"
+                               FontSize="12"
+                               Foreground="#A0A0A0"
+                               Margin="0,2,0,0"/>
+				</StackPanel>
+
+				<!-- Logo -->
+				<Image Grid.Column="1"
+                       Source="pack://application:,,,/Resources/logo-white.png"
+                       Height="56"
+                       HorizontalAlignment="Right"/>
+			</Grid>
+
+			<!-- ================= DESCRIPTION ================= -->
+			<ScrollViewer Grid.Row="1"
+                          VerticalScrollBarVisibility="Auto"
+                          Margin="0,0,0,14">
+
+				<StackPanel>
+
+					<TextBlock TextWrapping="Wrap"
+                               Foreground="#EAEAEA"
+                               FontSize="14"
+                               LineHeight="22">
+						Bulk PDF Publisher is a streamlined automation tool that simplifies the conversion of engineering drawings into high-quality PDF documents.
+
+						It allows users to configure the Creo executable path for version compatibility, define a dedicated working directory for organized publishing, and optionally apply customizable watermarks with adjustable text, size, opacity, and placement to protect confidential data.
+
+						Designed for efficiency and reliability, the tool ensures consistent, secure, and standardized PDF output while significantly reducing manual effort through a simple and intuitive configuration experience.
+					</TextBlock>
+
+					<!-- Website -->
+					<TextBlock Margin="0,16,0,0"
+                               FontSize="13"
+                               Foreground="#CFCFCF">
+						Website:
+						<Hyperlink NavigateUri="https://adroitecengg.com/"
+                                   RequestNavigate="Hyperlink_RequestNavigate"
+                                   Foreground="#4FC3F7"
+                                   TextDecorations="{x:Null}">
+							www.adroitec.com
+						</Hyperlink>
+					</TextBlock>
+
+				</StackPanel>
+			</ScrollViewer>
+
+			<!-- ================= FOOTER ================= -->
+			<Grid Grid.Row="2">
+				<Grid.ColumnDefinitions>
+					<ColumnDefinition Width="*"/>
+					<ColumnDefinition Width="Auto"/>
+				</Grid.ColumnDefinitions>
+
+				<!-- Copyright -->
+				<TextBlock Grid.Column="0"
+                           VerticalAlignment="Center"
+                           FontSize="12"
+                           Foreground="#8C8C8C">
+					© 2025 Adroitec Engineering Solutions. All rights reserved.
+				</TextBlock>
+
+				<!-- Close -->
+				<Button Grid.Column="1"
+                        Content="Close"
+                        Width="96"
+                        Height="34"
+                        Background="#007ACC"
+                        Foreground="White"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        Padding="12,4"
+                        Click="Close_Click"/>
+			</Grid>
+
+		</Grid>
+	</Border>
+</Window>

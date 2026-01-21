@@ -6,6 +6,7 @@ Imports System.Windows.Controls
 Imports System.Windows.Input
 Imports System.Windows.Media
 Imports System.Windows.Media.Animation
+Imports CreoPublisherApp.BulkPdfPublisher
 Imports CreoPublisherApp.CreoPublisherApp.ViewModels
 
 Namespace CreoPublisherApp
@@ -102,10 +103,11 @@ Namespace CreoPublisherApp
         End Sub
 
         Private Sub ShowDragDropInstructions(sender As Object, e As RoutedEventArgs)
-            MessageBox.Show("To add drawing files, simply drag and drop them (or folders) anywhere on this window." & vbCrLf & vbCrLf &
-                          "You can also use the browse buttons in the sidebar to select input and output folders.",
-                    "How to Drag and Drop", MessageBoxButton.OK, MessageBoxImage.Information)
+            Dim help As New HelpWindow()
+            help.Owner = Me
+            help.ShowDialog()
         End Sub
+
 
         Private Sub Button_Click(sender As Object, e As RoutedEventArgs)
             ' Generic button click handler - can be removed if not used

@@ -786,7 +786,7 @@
 
                     <!-- Help Button -->
                     <Button Width="40" Height="40"
-            ToolTip="How to drag and drop files"
+            ToolTip="About this tool"
             Click="ShowDragDropInstructions"
             Style="{StaticResource IconButtonStyle}"
             Padding="8">

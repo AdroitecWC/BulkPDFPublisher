@@ -21,4 +21,5 @@ Public Class CreoSessionManager
             MessageBox.Show("Session initialization failed: " & ex.Message)
         End Try
     End Sub
+
 End Class

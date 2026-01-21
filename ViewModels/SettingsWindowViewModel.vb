@@ -135,6 +135,33 @@ Public Class SettingsWindowViewModel
             End If
         End Set
     End Property
+    ' -------------------------------
+    ' License Info (Read-only)
+    ' -------------------------------
+    Private _licenseStatus As String = "Checking..."
+
+    Public ReadOnly Property LicenseStatus As String
+        Get
+            Return _licenseStatus
+        End Get
+    End Property
+
+
+    Public ReadOnly Property LicenseSystemName As String
+        Get
+            Return $"System Name: {Environment.MachineName}"
+        End Get
+    End Property
+    Public ReadOnly Property LicenseExpiry As String
+        Get
+            If LicenseManager.CheckLicense() Then
+                Return "Valid until " & LicenseManager.GetActiveLicenseExpiry()
+            End If
+            Return "-"
+        End Get
+    End Property
+
+
 
     ' -------------------------------
     ' Commands
@@ -144,6 +171,8 @@ Public Class SettingsWindowViewModel
     Public Property SaveCommand As ICommand
     Public Property CancelCommand As ICommand
     Public Property ConfirmCommand As ICommand
+    Public Property DeactivateLicenseCommand As ICommand
+    Public ReadOnly Property TransferLicenseCommand As ICommand
 
     ' -------------------------------
     ' Close event
@@ -171,6 +200,10 @@ Public Class SettingsWindowViewModel
         SaveCommand = New RelayCommand(AddressOf Save)
         CancelCommand = New RelayCommand(AddressOf Cancel)
         ConfirmCommand = New RelayCommand(AddressOf Confirm)
+        DeactivateLicenseCommand = New RelayCommand(AddressOf DeactivateLicense)
+        TransferLicenseCommand = New RelayCommand(AddressOf ExecuteTransferLicense, AddressOf CanTransferLicense)
+        RefreshLicenseInfo()
+
     End Sub
 
     ' -------------------------------
@@ -251,6 +284,110 @@ Public Class SettingsWindowViewModel
         RaiseEvent RequestClose()
     End Sub
 
+    Private Sub DeactivateLicense()
+        Dim result = MessageBox.Show(
+        "Are you sure you want to deactivate this license?",
+        "Confirm Deactivation",
+        MessageBoxButton.YesNo,
+        MessageBoxImage.Warning)
+
+        If result <> MessageBoxResult.Yes Then Return
+
+        Try
+            LicenseManager.DeactivateLicense()
+
+            MessageBox.Show(
+            "License deactivated successfully. Please restart the application.",
+            "Deactivated",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information)
+
+            Application.Current.Shutdown()
+
+        Catch ex As Exception
+            MessageBox.Show(
+            "Failed to deactivate license.",
+            "Error",
+            MessageBoxButton.OK,
+            MessageBoxImage.Error)
+        End Try
+    End Sub
+
+    Private Sub RefreshLicenseInfo()
+        If Not LicenseState.IsChecked Then
+            _licenseStatus = "Checking..."
+        ElseIf LicenseState.IsValid Then
+            _licenseStatus = "License Status: ACTIVE"
+        Else
+            _licenseStatus = "License Status: INACTIVE"
+        End If
+
+        OnPropertyChanged(NameOf(LicenseStatus))
+        OnPropertyChanged(NameOf(LicenseExpiry))
+    End Sub
+
+
+    Private Sub ExecuteTransferLicense()
+
+        ' 1. Ask for target system code
+        Dim input = Microsoft.VisualBasic.Interaction.InputBox(
+        "Enter target system code:",
+        "Transfer License"
+    )
+
+        If String.IsNullOrWhiteSpace(input) Then Return
+
+        ' 2. Confirm transfer
+        Dim confirm = MessageBox.Show(
+        "This will deactivate the license on this system and generate a license for another system." &
+        Environment.NewLine & Environment.NewLine &
+        "Do you want to continue?",
+        "Confirm Transfer",
+        MessageBoxButton.YesNo,
+        MessageBoxImage.Warning
+    )
+
+        If confirm <> MessageBoxResult.Yes Then Return
+
+        ' 3. Ask user where to save the transferred license
+        Dim sfd As New Microsoft.Win32.SaveFileDialog With {
+        .Title = "Save Transferred License",
+        .Filter = "License Files (*.lic)|*.lic",
+        .FileName = "Transferred_License.lic"
+    }
+
+        If sfd.ShowDialog() <> True Then Return
+
+        Dim savePath As String = sfd.FileName
+
+        ' 4. Perform transfer
+        Try
+            Dim generatedPath As String =
+            LicenseManager.TransferLicense(input.Trim(), savePath)
+
+            MessageBox.Show(
+            "License transferred successfully." & Environment.NewLine & Environment.NewLine &
+            "New license generated at:" & Environment.NewLine &
+            generatedPath & Environment.NewLine & Environment.NewLine &
+            "This system is now unlicensed.",
+            "Transfer Complete",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information
+        )
+
+            ' 5. Exit application (mandatory after transfer)
+            Application.Current.Shutdown()
+
+        Catch ex As Exception
+            MessageBox.Show(
+            ex.Message,
+            "Transfer Failed",
+            MessageBoxButton.OK,
+            MessageBoxImage.Error
+        )
+        End Try
+
+    End Sub
 
     Private Function ValidateInputs() As Boolean
         If String.IsNullOrWhiteSpace(CreoPath) OrElse Not File.Exists(CreoPath) OrElse Not CreoPath.ToLower().EndsWith("parametric.exe") Then
@@ -264,6 +401,9 @@ Public Class SettingsWindowViewModel
         End If
 
         Return True
+    End Function
+    Private Function CanTransferLicense() As Boolean
+        Return LicenseManager.CheckLicense()
     End Function
 
     ' -------------------------------
