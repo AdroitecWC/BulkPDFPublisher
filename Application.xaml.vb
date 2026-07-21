@@ -66,5 +66,9 @@ Partial Class Application
         End If
     End Sub
 
+    Protected Overrides Sub OnExit(e As ExitEventArgs)
+        LicenseManager.FloatingRelease()
+        MyBase.OnExit(e)
+    End Sub
 
 End Class

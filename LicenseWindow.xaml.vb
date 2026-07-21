@@ -1,6 +1,6 @@
-﻿Imports System.IO
-Imports Microsoft.Win32
+Imports System.IO
 Imports System.Windows
+Imports Microsoft.Win32
 
 Namespace CreoPublisherApp
     Partial Public Class LicenseWindow
@@ -15,7 +15,7 @@ Namespace CreoPublisherApp
 
             ' Show expiry date if already licensed
             If LicenseManager.CheckLicense() Then
-                Dim licPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources\License\License.lic")
+                Dim licPath = LicenseManager.GetLicensePath()
                 If File.Exists(licPath) Then
                     Try
                         Using reader As New StreamReader(licPath)
@@ -50,19 +50,76 @@ Namespace CreoPublisherApp
             End If
 
             Try
-                Dim targetPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources\License\License.lic")
+                Dim targetPath = LicenseManager.GetLicensePath()
                 Directory.CreateDirectory(Path.GetDirectoryName(targetPath))
                 File.Copy(selectedFile, targetPath, True)
 
-                If LicenseManager.CheckLicense() Then
-                    MessageBox.Show("License Activated!", "Success", MessageBoxButton.OK, MessageBoxImage.Information)
-                    DialogResult = True
-                    Close()
-                Else
-                    MessageBox.Show("Invalid license file.", "Error", MessageBoxButton.OK, MessageBoxImage.Error)
-                End If
+                ' Activate (validates the machine code match and flips Activated:True —
+                ' node-locked files arrive from the web portal with Activated:False).
+                ' Floating licenses are already pre-activated by the server.
+                LicenseManager.ActivateLicense()
+
+                Dim result = LicenseManager.CheckLicenseDetailed()
+
+                Select Case result
+                    Case LicenseManager.LicenseError.None
+                        MessageBox.Show("License Activated!", "Success", MessageBoxButton.OK, MessageBoxImage.Information)
+                        DialogResult = True
+                        Close()
+
+                    Case LicenseManager.LicenseError.ServerUnreachable
+                        MessageBox.Show(
+                            "Floating license file copied successfully." & vbCrLf & vbCrLf &
+                            "However, the license server could not be reached." & vbCrLf &
+                            "Make sure the FloatingLicenseServer is running on the server machine and the port is correct." & vbCrLf & vbCrLf &
+                            "The license file has been saved — the app will work once the server is reachable.",
+                            "Server Unreachable", MessageBoxButton.OK, MessageBoxImage.Exclamation)
+                        DialogResult = True
+                        Close()
+
+                    Case LicenseManager.LicenseError.NoSeatsAvailable
+                        MessageBox.Show(
+                            $"No seats available ({LicenseManager.LastSeatsInUse}/{LicenseManager.LastSeatsMax} in use)." & vbCrLf &
+                            "Ask another user to close the application to free a seat, or contact Adroitec to increase your seat count.",
+                            "No Seats Available", MessageBoxButton.OK, MessageBoxImage.Exclamation)
+
+                    Case LicenseManager.LicenseError.InvalidLicense
+                        MessageBox.Show(
+                            "The server does not recognise this license." & vbCrLf &
+                            "Please contact your administrator.",
+                            "Invalid License", MessageBoxButton.OK, MessageBoxImage.Error)
+
+                    Case LicenseManager.LicenseError.WrongProduct
+                        MessageBox.Show(
+                            "This license was issued for a different Adroitec product." & vbCrLf &
+                            "Please use the license generated for Bulk PDF publish.",
+                            "Wrong Product", MessageBoxButton.OK, MessageBoxImage.Error)
+
+                    Case LicenseManager.LicenseError.Expired
+                        MessageBox.Show("This license has expired. Please renew it.", "Expired",
+                                MessageBoxButton.OK, MessageBoxImage.Error)
+
+                    Case LicenseManager.LicenseError.LicenseTransferred
+                        MessageBox.Show(
+                            "This license was already transferred to another machine." & vbCrLf &
+                            "Please contact your administrator for a new license.",
+                            "License Transferred", MessageBoxButton.OK, MessageBoxImage.Error)
+
+                    Case LicenseManager.LicenseError.MachineMismatch
+                        MessageBox.Show(
+                            "This license was not issued for this machine." & vbCrLf & vbCrLf &
+                            "Your Request Code:" & vbCrLf & $"  {requestCode}" & vbCrLf & vbCrLf &
+                            "Contact Adroitec with this Request Code to get a new license.",
+                            "Machine Mismatch", MessageBoxButton.OK, MessageBoxImage.Error)
+
+                    Case Else
+                        MessageBox.Show($"License Not Activated ({result}).", "Error",
+                                MessageBoxButton.OK, MessageBoxImage.Error)
+                End Select
+
             Catch ex As Exception
-                MessageBox.Show("Activation failed: " & ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error)
+                MessageBox.Show("Activation failed: " & ex.Message, "Error",
+                        MessageBoxButton.OK, MessageBoxImage.Error)
             End Try
         End Sub
 
