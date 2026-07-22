@@ -51,6 +51,16 @@ Public Module LicenseManager
 
     ''' <summary>Returns the specific reason for failure, or None on success.</summary>
     Public Function CheckLicenseDetailed() As LicenseError
+        ' A key-based activation (License Key field, no .lic file at all) takes
+        ' priority over a local file every time — once someone's activated with a
+        ' key, that's the intended source of truth for this install.
+        Dim activatedUid = GetActivatedUid()
+        If activatedUid IsNot Nothing Then
+            _serverUrl = If(GetServerUrlOverride(), "")
+            If _serverUrl = "" Then Return LicenseError.LicenseTampered
+            Return FloatingCheckoutDetailed(activatedUid, GenerateLicenseCode())
+        End If
+
         Dim fullPath = GetLicensePath()
         If Not File.Exists(fullPath) Then Return LicenseError.LicenseFileMissing
 
@@ -447,6 +457,73 @@ Public Module LicenseManager
             Return If(String.IsNullOrWhiteSpace(v), Nothing, v)
         End Using
     End Function
+
+    ''' <summary>
+    ''' Activates a floating license by License Key alone (the Uid shown in
+    ''' FloatingLicenseServer's grid) against the given server address, with no
+    ''' .lic file needed at all. Saves both so every future launch checks out
+    ''' the same way (see CheckLicenseDetailed).
+    ''' </summary>
+    Public Function ActivateWithKey(rawUid As String, serverAddress As String, ByRef message As String) As Boolean
+        Dim uid = If(rawUid, "").Trim()
+        If uid = "" Then
+            message = "Enter the License Key shown in FloatingLicenseServer."
+            Return False
+        End If
+
+        Dim url = BuildServerUrl(serverAddress)
+        If url Is Nothing Then
+            message = "Enter a server address, e.g. vizserver:1122 or vizserver@1122."
+            Return False
+        End If
+
+        SaveServerUrlOverride(url)
+        SaveActivatedUid(uid)
+
+        Dim result = FloatingCheckoutDetailed(uid, GenerateLicenseCode())
+        If result = LicenseError.None Then
+            message = "Activated successfully."
+            Return True
+        End If
+
+        ' Only a genuinely wrong key should un-stick the saved activation --
+        ' NoSeatsAvailable/ServerUnreachable are transient and should keep
+        ' retrying on the next launch, same as a normal floating .lic would.
+        If result = LicenseError.InvalidLicense Then ClearActivatedUid()
+
+        Select Case result
+            Case LicenseError.NoSeatsAvailable
+                message = $"No seats available ({LastSeatsInUse}/{LastSeatsMax} in use)."
+            Case LicenseError.InvalidLicense
+                message = "The server does not recognise this License Key."
+            Case LicenseError.ServerUnreachable
+                message = $"Could not reach a license server at {url}."
+            Case LicenseError.WrongProduct
+                message = "This License Key was issued for a different Adroitec product."
+            Case Else
+                message = $"Activation failed ({result})."
+        End Select
+        Return False
+    End Function
+
+    Private Sub SaveActivatedUid(uid As String)
+        Using k = Registry.CurrentUser.CreateSubKey(SettingsRegPath)
+            k.SetValue("ActivatedFloatingUid", uid)
+        End Using
+    End Sub
+
+    Private Function GetActivatedUid() As String
+        Using k = Registry.CurrentUser.OpenSubKey(SettingsRegPath)
+            Dim v = If(k IsNot Nothing, TryCast(k.GetValue("ActivatedFloatingUid"), String), Nothing)
+            Return If(String.IsNullOrWhiteSpace(v), Nothing, v)
+        End Using
+    End Function
+
+    Private Sub ClearActivatedUid()
+        Using k = Registry.CurrentUser.OpenSubKey(SettingsRegPath, writable:=True)
+            k?.DeleteValue("ActivatedFloatingUid", throwOnMissingValue:=False)
+        End Using
+    End Sub
 
     ' =====================================================
     ' REGISTRY

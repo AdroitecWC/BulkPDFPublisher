@@ -43,6 +43,20 @@ Namespace CreoPublisherApp
         End Sub
 
         Private Sub btnActivate_Click(sender As Object, e As RoutedEventArgs)
+            Dim licenseKey = txtLicenseKey.Text.Trim()
+            If licenseKey <> "" Then
+                Dim keyMessage As String = ""
+                Dim ok = LicenseManager.ActivateWithKey(licenseKey, txtNetworkServer.Text.Trim(), keyMessage)
+                If ok Then
+                    MessageBox.Show(keyMessage, "Success", MessageBoxButton.OK, MessageBoxImage.Information)
+                    DialogResult = True
+                    Close()
+                Else
+                    MessageBox.Show(keyMessage, "Activation Failed", MessageBoxButton.OK, MessageBoxImage.Error)
+                End If
+                Return
+            End If
+
             Dim selectedFile = txtFilePath.Text.Trim()
             If Not File.Exists(selectedFile) Then
                 MessageBox.Show("License file not found.", "Error", MessageBoxButton.OK, MessageBoxImage.Error)
