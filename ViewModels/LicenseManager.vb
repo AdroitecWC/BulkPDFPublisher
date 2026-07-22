@@ -27,8 +27,12 @@ Public Module LicenseManager
 
     Private Const LicfilePwd As String = "Kbe@Adr"
     Private Const AppProduct As String = "Bulk PDF publish"
-    Private Const UsedLicensesRegPath As String = "Software\Adroitec Engineering Solutions Pvt Ltd\MyTool\UsedLicenses"
-    Private Const SettingsRegPath As String = "Software\Adroitec Engineering Solutions Pvt Ltd\MyTool\Settings"
+    ' Scoped by ToolName -- these paths used to be the literal, identical string across
+    ' every Adroitec tool ("...\MyTool\..."), so activating one tool with a License Key
+    ' would overwrite the same registry value another tool reads back, making it look
+    ' like "every tool accepts the same key". Each tool now gets its own subkey.
+    Private Const UsedLicensesRegPath As String = "Software\Adroitec Engineering Solutions Pvt Ltd\BulkPDFPublisher\UsedLicenses"
+    Private Const SettingsRegPath As String = "Software\Adroitec Engineering Solutions Pvt Ltd\BulkPDFPublisher\Settings"
 
     ' ── Floating license runtime state ───────────────────────────────────────
     Private _seatToken As String = ""
