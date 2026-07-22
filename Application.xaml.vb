@@ -53,6 +53,13 @@ Partial Class Application
             Environment.Exit(0)
         Else
             ' GUI Mode
+
+            ' Default ShutdownMode is OnLastWindowClose — with no window open yet,
+            ' closing LicenseWindow (the only open window at that point) would
+            ' trigger shutdown immediately, racing with intro.Show() right after
+            ' it and closing the whole app instead of continuing on.
+            ShutdownMode = ShutdownMode.OnExplicitShutdown
+
             If Not LicenseManager.CheckLicense() Then
                 Dim licWin As New LicenseWindow()
                 Dim activated = licWin.ShowDialog()
@@ -61,6 +68,7 @@ Partial Class Application
                     Environment.Exit(0)
                 End If
             End If
+            ShutdownMode = ShutdownMode.OnLastWindowClose
             Dim intro = New IntroWindow()
             intro.Show()
         End If
