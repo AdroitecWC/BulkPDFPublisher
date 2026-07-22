@@ -28,6 +28,7 @@ Public Module LicenseManager
     Private Const LicfilePwd As String = "Kbe@Adr"
     Private Const AppProduct As String = "Bulk PDF publish"
     Private Const UsedLicensesRegPath As String = "Software\Adroitec Engineering Solutions Pvt Ltd\MyTool\UsedLicenses"
+    Private Const SettingsRegPath As String = "Software\Adroitec Engineering Solutions Pvt Ltd\MyTool\Settings"
 
     ' ── Floating license runtime state ───────────────────────────────────────
     Private _seatToken As String = ""
@@ -82,7 +83,10 @@ Public Module LicenseManager
                 End If
 
                 Dim uid = If(data.ContainsKey("LicenseUid"), data("LicenseUid"), "")
-                _serverUrl = If(data.ContainsKey("ServerUrl"), data("ServerUrl").TrimEnd("/"c), "")
+                ' A manually entered + verified address (Network License Server field) takes
+                ' precedence over whatever ServerUrl is baked into the .lic file, since that's
+                ' exactly the point of letting an admin repoint a client without reissuing a license.
+                _serverUrl = If(GetServerUrlOverride(), If(data.ContainsKey("ServerUrl"), data("ServerUrl").TrimEnd("/"c), ""))
                 If uid = "" OrElse _serverUrl = "" Then Return LicenseError.LicenseTampered
 
                 Return FloatingCheckoutDetailed(uid, GenerateLicenseCode())
@@ -373,6 +377,75 @@ Public Module LicenseManager
             sb.Append($"{kv.Key}:{kv.Value}{vbLf}")
         Next
         Return sb.ToString()
+    End Function
+
+    ' =====================================================
+    ' NETWORK LICENSE SERVER — manual address entry + connectivity test
+    ' =====================================================
+
+    ''' <summary>
+    ''' Parses a "host", "host:port", or "host@port" address (matching the Server
+    ''' Name shown on the FloatingLicenseServer app), probes its checkout endpoint,
+    ''' and — only if a server actually answers — saves it so future floating
+    ''' checkouts use this address instead of the one baked into the .lic file.
+    ''' </summary>
+    Public Function TestAndSaveServerUrl(rawAddress As String, ByRef message As String) As Boolean
+        Dim url = BuildServerUrl(rawAddress)
+        If url Is Nothing Then
+            message = "Enter a server address, e.g. vizserver:1122 or vizserver@1122."
+            Return False
+        End If
+
+        Try
+            Dim form As New Dictionary(Of String, String) From {
+                {"uid", "__connectivity_test__"}, {"machine", "connectivity-test"}, {"machine_name", "connectivity-test"}
+            }
+            Dim resp = _http.PostAsync($"{url}/checkout.php", New FormUrlEncodedContent(form)).GetAwaiter().GetResult()
+            Dim json = resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+            If Not json.TrimStart().StartsWith("{") Then
+                message = $"No license server responded at {url}."
+                Return False
+            End If
+        Catch
+            message = $"Could not reach a license server at {url}." & vbCrLf & "Check the address and try again."
+            Return False
+        End Try
+
+        SaveServerUrlOverride(url)
+        message = $"Connected to the license server at {url} successfully."
+        Return True
+    End Function
+
+    Private Function BuildServerUrl(rawAddress As String) As String
+        Dim addr = If(rawAddress, "").Trim()
+        If addr = "" Then Return Nothing
+
+        Dim host As String
+        Dim port As Integer = 80
+        If addr.Contains("@"c) OrElse addr.Contains(":"c) Then
+            Dim sep = If(addr.Contains("@"c), "@"c, ":"c)
+            Dim parts = addr.Split({sep}, 2)
+            host = parts(0).Trim()
+            If Not Integer.TryParse(parts(1).Trim(), port) Then port = 80
+        Else
+            host = addr
+        End If
+        If host = "" Then Return Nothing
+
+        Return If(port = 80, $"http://{host}/web/api/floating", $"http://{host}:{port}/web/api/floating")
+    End Function
+
+    Private Sub SaveServerUrlOverride(url As String)
+        Using k = Registry.CurrentUser.CreateSubKey(SettingsRegPath)
+            k.SetValue("FloatingServerOverride", url)
+        End Using
+    End Sub
+
+    Private Function GetServerUrlOverride() As String
+        Using k = Registry.CurrentUser.OpenSubKey(SettingsRegPath)
+            Dim v = If(k IsNot Nothing, TryCast(k.GetValue("FloatingServerOverride"), String), Nothing)
+            Return If(String.IsNullOrWhiteSpace(v), Nothing, v)
+        End Using
     End Function
 
     ' =====================================================

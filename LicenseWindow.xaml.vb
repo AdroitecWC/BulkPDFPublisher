@@ -123,6 +123,25 @@ Namespace CreoPublisherApp
             End Try
         End Sub
 
+        Private Sub btnConnectServer_Click(sender As Object, e As RoutedEventArgs)
+            Dim address = txtNetworkServer.Text.Trim()
+            If address = "" Then
+                MessageBox.Show("Enter a server address, e.g. vizserver:1122.", "Network License Server",
+                        MessageBoxButton.OK, MessageBoxImage.Exclamation)
+                Return
+            End If
+
+            btnConnectServer.IsEnabled = False
+            Try
+                Dim message As String = ""
+                Dim ok = LicenseManager.TestAndSaveServerUrl(address, message)
+                MessageBox.Show(message, If(ok, "Connected", "Connection Failed"),
+                        MessageBoxButton.OK, If(ok, MessageBoxImage.Information, MessageBoxImage.Error))
+            Finally
+                btnConnectServer.IsEnabled = True
+            End Try
+        End Sub
+
         Private Sub btnCancel_Click(sender As Object, e As RoutedEventArgs)
             DialogResult = False
             Close()
