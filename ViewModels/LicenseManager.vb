@@ -200,7 +200,8 @@ Public Module LicenseManager
             Dim form As New Dictionary(Of String, String) From {
                 {"uid", uid},
                 {"machine", machineCode},
-                {"machine_name", machineName}
+                {"machine_name", machineName},
+                {"product", AppProduct}
             }
 
             Dim json As String
@@ -244,6 +245,7 @@ Public Module LicenseManager
                 Dim reason = If(root.TryGetProperty("reason", reasonEl), reasonEl.GetString(), "")
                 If reason = "no_seats" Then Return LicenseError.NoSeatsAvailable
                 If reason = "invalid_license" Then Return LicenseError.InvalidLicense
+                If reason = "wrong_product" Then Return LicenseError.WrongProduct
                 Return LicenseError.NoSeatsAvailable
             End Using
 
