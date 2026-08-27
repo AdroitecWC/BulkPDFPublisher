@@ -81,7 +81,6 @@ Public Class FileItemModel
         CreatedDateRaw = fi.CreationTime
         ModifiedDateRaw = fi.LastWriteTime
         FileSize = $"{Math.Round(fi.Length / 1024.0, 2)} KB"
-
         ' Use safe manual filename stripping
         If FileName IsNot Nothing AndAlso FileName.Contains(".") Then
             _customPdfName = FileName.Substring(0, FileName.LastIndexOf("."c))

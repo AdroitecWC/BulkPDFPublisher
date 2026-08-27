@@ -4,8 +4,9 @@ Imports System.Runtime.CompilerServices
 Imports System.Windows
 Imports System.Windows.Input
 Imports System.Windows.Media
-Imports Ookii.Dialogs.Wpf
+Imports CreoPublisherApp.CreoPublisherApp
 Imports Microsoft.Win32
+Imports Ookii.Dialogs.Wpf
 
 Public Class SettingsWindowViewModel
     Implements INotifyPropertyChanged
@@ -15,6 +16,8 @@ Public Class SettingsWindowViewModel
     ' -------------------------------
     Private _creoPath As String
     Private _originalCreoPath As String
+    Public Event RequestShutdown As Action
+
     Public Property CreoPath As String
         Get
             Return _creoPath
@@ -135,6 +138,57 @@ Public Class SettingsWindowViewModel
             End If
         End Set
     End Property
+    ' -------------------------------
+    ' License Action Selection
+    ' -------------------------------
+    Private _isDeactivateSelected As Boolean = True
+    Public Property IsDeactivateSelected As Boolean
+        Get
+            Return _isDeactivateSelected
+        End Get
+        Set(value As Boolean)
+            If _isDeactivateSelected <> value Then
+                _isDeactivateSelected = value
+
+                If value Then
+                    _isTransferSelected = False
+                    OnPropertyChanged(NameOf(IsTransferSelected))
+                End If
+
+                OnPropertyChanged()
+                OnPropertyChanged(NameOf(PrimaryLicenseActionText))
+            End If
+        End Set
+    End Property
+
+    Private _isTransferSelected As Boolean
+    Public Property IsTransferSelected As Boolean
+        Get
+            Return _isTransferSelected
+        End Get
+        Set(value As Boolean)
+            If _isTransferSelected <> value Then
+                _isTransferSelected = value
+
+                If value Then
+                    _isDeactivateSelected = False
+                    OnPropertyChanged(NameOf(IsDeactivateSelected))
+                End If
+
+                OnPropertyChanged()
+                OnPropertyChanged(NameOf(PrimaryLicenseActionText))
+            End If
+        End Set
+    End Property
+
+    Public ReadOnly Property PrimaryLicenseActionText As String
+        Get
+            If IsTransferSelected Then
+                Return "Transfer License"
+            End If
+            Return "Deactivate License"
+        End Get
+    End Property
 
     ' -------------------------------
     ' Commands
@@ -144,6 +198,9 @@ Public Class SettingsWindowViewModel
     Public Property SaveCommand As ICommand
     Public Property CancelCommand As ICommand
     Public Property ConfirmCommand As ICommand
+    Public Property DeactivateLicenseCommand As ICommand
+    Public Property TransferLicenseCommand As ICommand
+    Public Property PrimaryLicenseActionCommand As ICommand
 
     ' -------------------------------
     ' Close event
@@ -171,6 +228,10 @@ Public Class SettingsWindowViewModel
         SaveCommand = New RelayCommand(AddressOf Save)
         CancelCommand = New RelayCommand(AddressOf Cancel)
         ConfirmCommand = New RelayCommand(AddressOf Confirm)
+        DeactivateLicenseCommand = New RelayCommand(AddressOf DeactivateLicense)
+        TransferLicenseCommand = New RelayCommand(AddressOf TransferLicense)
+        PrimaryLicenseActionCommand = New RelayCommand(AddressOf ExecutePrimaryLicenseAction)
+
     End Sub
 
     ' -------------------------------
@@ -265,6 +326,84 @@ Public Class SettingsWindowViewModel
 
         Return True
     End Function
+    Private Sub DeactivateLicense()
+        If Not IsDeactivateSelected Then
+            MessageBox.Show(
+            "Please select 'Deactivate License' option to proceed.",
+            "Action Not Selected",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information)
+            Return
+        End If
+        Dim result = MessageBox.Show(
+        "This will permanently deactivate the license and close the application." &
+        Environment.NewLine & Environment.NewLine &
+        "You will need a new license to continue using the software." &
+        Environment.NewLine & Environment.NewLine &
+        "Do you want to continue?",
+        "Deactivate License",
+        MessageBoxButton.YesNo,
+        MessageBoxImage.Warning)
+
+        If result <> MessageBoxResult.Yes Then Return
+
+        If LicenseManager.DeactivateLicense() Then
+            MessageBox.Show("License deactivated successfully. The application will now close.",
+                        "License Deactivated",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information)
+
+            ' 🔔 Notify View to shutdown app
+            RaiseEvent RequestShutdown()
+        Else
+            MessageBox.Show("License deactivation failed or no active license found.",
+                        "Error",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error)
+        End If
+    End Sub
+    Private Sub TransferLicense()
+
+        If Not IsTransferSelected Then
+            MessageBox.Show(
+            "Please select 'Transfer License' option to proceed.",
+            "Action Not Selected",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information)
+            Return
+        End If
+
+        Dim vm As New TransferLicenseViewModel()
+        Dim win As New TransferLicenseWindow() With {
+        .Owner = Application.Current.MainWindow,
+        .DataContext = vm
+    }
+
+        Dim result = win.ShowDialog()
+
+
+
+
+    End Sub
+    Private Sub ExecutePrimaryLicenseAction()
+
+        If IsTransferSelected Then
+            TransferLicense()
+            Return
+        End If
+
+        If IsDeactivateSelected Then
+            DeactivateLicense()
+            Return
+        End If
+
+        MessageBox.Show(
+        "Please select a license action.",
+        "No Action Selected",
+        MessageBoxButton.OK,
+        MessageBoxImage.Information)
+
+    End Sub
 
     ' -------------------------------
     ' INotifyPropertyChanged

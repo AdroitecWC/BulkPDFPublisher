@@ -74,6 +74,12 @@ Namespace CreoPublisherApp.ViewModels
             OpenReportCommand = New RelayCommand(AddressOf OpenReportCommandExecute, AddressOf CanOpenReport)
         End Sub
 
+        ' Helper class
+        Private Class DrwIterationInfo
+            Public Property FullPath As String
+            Public Property BaseName As String
+            Public Property Iteration As Integer
+        End Class
 
 
         ' Properties
@@ -411,7 +417,9 @@ Namespace CreoPublisherApp.ViewModels
                 End If
             End Get
         End Property
-
+        Private Shared ReadOnly DrwRegex As New Regex(
+"^(?<base>.+?)\.drw(?:\.(?<iter>\d+))?$",
+RegexOptions.IgnoreCase Or RegexOptions.Compiled)
         ' Commands
         Public Property BrowseFolderCommand As ICommand
         Public Property BrowseFilesCommand As ICommand
@@ -452,10 +460,14 @@ Namespace CreoPublisherApp.ViewModels
         End Function
 
         Private Sub RefreshFilter()
-            _filteredFilesView.Refresh()
-            UpdateCounts()
-        End Sub
 
+            If _filteredFilesView Is Nothing Then Return
+
+            _filteredFilesView.Refresh()
+
+            UpdateCounts()
+
+        End Sub
         ' File loading and updating
         Private Sub BrowseFolder()
             Dim dialog As New VistaFolderBrowserDialog()
@@ -498,17 +510,54 @@ Namespace CreoPublisherApp.ViewModels
             Try
                 _files.Clear()
 
-                ' Get all .drw files (including .drw.1, .drw.2, etc.)
-                Dim filesInFolder = Directory.GetFiles(folderPath).
-            Where(Function(f) Regex.IsMatch(System.IO.Path.GetFileName(f), "\.drw(\.\d+)?$", RegexOptions.IgnoreCase)).
+                ' STEP 1: Get all .drw and .drw.X files
+                Dim allDrwFiles = Directory.EnumerateFiles(folderPath).
+            Where(Function(f) Regex.IsMatch(Path.GetFileName(f),
+                "\.drw(\.\d+)?$", RegexOptions.IgnoreCase)).
             ToList()
 
-                ' Remove duplicates by content hash
-                Dim uniqueFiles = RemoveDuplicateFiles(filesInFolder)
+                ' STEP 2: Parse base name and iteration
+                Dim parsedFiles As New List(Of DrwIterationInfo)
 
-                ' Load remaining files
-                For Each filePath In uniqueFiles
-                    Dim fileModel As New FileItemModel(filePath)
+                For Each filePath In allDrwFiles
+                    Dim fileName = Path.GetFileName(filePath)
+
+                    ' Matches:
+                    ' 52161356.drw
+                    ' 52161356.drw.1
+                    ' 52161356.drw.2
+
+                    Dim match = Regex.Match(fileName,
+                "^(?<base>.+?)\.drw(?:\.(?<iter>\d+))?$",
+                RegexOptions.IgnoreCase)
+
+                    If match.Success Then
+                        Dim baseName As String = match.Groups("base").Value
+                        Dim iteration As Integer = 0
+
+                        If match.Groups("iter").Success Then
+                            Integer.TryParse(match.Groups("iter").Value, iteration)
+                        End If
+
+                        parsedFiles.Add(New DrwIterationInfo With {
+                    .FullPath = filePath,
+                    .BaseName = baseName,
+                    .Iteration = iteration
+                })
+                    End If
+                Next
+
+                ' STEP 3: Select ONLY the latest iteration per base drawing
+                Dim latestFiles = parsedFiles.
+            GroupBy(Function(f) f.BaseName).
+            Select(Function(g) g.
+                OrderByDescending(Function(x) x.Iteration).
+                First()).
+            ToList()
+
+                ' STEP 4: Load only latest files into grid
+                For Each fileInfo In latestFiles
+                    Dim fileModel As New FileItemModel(fileInfo.FullPath)
                     AddHandler fileModel.PropertyChanged, AddressOf FileItem_PropertyChanged
                     _files.Add(fileModel)
                 Next
@@ -518,7 +567,8 @@ Namespace CreoPublisherApp.ViewModels
                 RefreshFilter()
 
             Catch ex As Exception
-                Log &= $"Error loading files from folder: {ex.Message}{Environment.NewLine}"
+                Debug.WriteLine(ex.ToString())
+                Throw
             End Try
         End Sub
 
@@ -562,7 +612,7 @@ Namespace CreoPublisherApp.ViewModels
 
         Private Function ComputeFileHash(filePath As String) As String
             Using sha256 = Security.Cryptography.SHA256.Create()
-                Using stream = File.OpenRead(filePath)
+                Using stream = New FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read)
                     Dim hashBytes = sha256.ComputeHash(stream)
                     Return BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant()
                 End Using
@@ -577,10 +627,27 @@ Namespace CreoPublisherApp.ViewModels
         End Sub
 
         Private Sub UpdateCounts()
-            _totalFilesCount = _files.Count
-            _selectedFilesCount = _files.Where(Function(f) f.IsSelected).Count()
-            _filesToRenameCount = _files.Where(Function(f) Not String.IsNullOrWhiteSpace(f.CustomPdfName) AndAlso
-                                                      f.CustomPdfName <> Path.GetFileNameWithoutExtension(f.FileName)).Count()
+
+            Dim total As Integer = _files.Count
+            Dim selected As Integer = 0
+            Dim renamed As Integer = 0
+
+            For Each f In _files
+
+                If f.IsSelected Then
+                    selected += 1
+                End If
+
+                If Not String.IsNullOrWhiteSpace(f.CustomPdfName) AndAlso
+           f.CustomPdfName <> Path.GetFileNameWithoutExtension(f.FileName) Then
+                    renamed += 1
+                End If
+
+            Next
+
+            _totalFilesCount = total
+            _selectedFilesCount = selected
+            _filesToRenameCount = renamed
 
             OnPropertyChanged(NameOf(TotalFilesCount))
             OnPropertyChanged(NameOf(SelectedFilesCount))
@@ -588,8 +655,8 @@ Namespace CreoPublisherApp.ViewModels
             OnPropertyChanged(NameOf(FilesDisplayText))
 
             UpdatePublishButtonText()
-        End Sub
 
+        End Sub
         Private Sub UpdatePublishButtonText()
             Dim actionText = If(IsMergeEnabled, "Merge", "Export")
             _publishButtonText = $"🚀 {actionText} {_selectedFilesCount} Files"
@@ -606,8 +673,14 @@ Namespace CreoPublisherApp.ViewModels
         ' Selection manipulation
         Private Sub ToggleSelectDeselect()
             ' Detect current state first by casting to FileItemModel
-            Dim allSelectedNow As Boolean = _filteredFilesView.Cast(Of FileItemModel)().
-                                    All(Function(f) f.IsSelected)
+            Dim allSelectedNow As Boolean = True
+
+            For Each f As FileItemModel In _filteredFilesView
+                If Not f.IsSelected Then
+                    allSelectedNow = False
+                    Exit For
+                End If
+            Next
 
             ' Toggle based on actual state
             _isAllSelected = Not allSelectedNow
@@ -652,7 +725,7 @@ Namespace CreoPublisherApp.ViewModels
 
         Private Sub InvertSelectionFiles()
             For Each f As FileItemModel In _filteredFilesView
-                f.IsSelected = Not f.IsSelected 
+                f.IsSelected = Not f.IsSelected
             Next
             UpdateFilesCountText()
             OnPropertyChanged(NameOf(Files))
@@ -674,6 +747,23 @@ Namespace CreoPublisherApp.ViewModels
                     Log &= "Please select an output folder before publishing." & Environment.NewLine
                     Return
                 End If
+
+                ' Validate that input and output folders actually exist on disk
+                Dim inputDir As String = If(_inputPath.Equals("Multiple files selected", StringComparison.OrdinalIgnoreCase),
+                                            SettingsManager.Instance.WorkingDirectory,
+                                            If(Directory.Exists(_inputPath), _inputPath, Path.GetDirectoryName(_inputPath)))
+                If Not Directory.Exists(inputDir) Then
+                    MessageBox.Show($"The input folder specified is not available:{Environment.NewLine}{inputDir}{Environment.NewLine}{Environment.NewLine}Please select a valid input folder.",
+                                    "Input Folder Not Found", MessageBoxButton.OK, MessageBoxImage.Warning)
+                    Log &= $"Export aborted: Input folder not found — {inputDir}" & Environment.NewLine
+                    Return
+                End If
+                If Not Directory.Exists(OutputPath) Then
+                    MessageBox.Show($"The output folder specified is not available:{Environment.NewLine}{OutputPath}{Environment.NewLine}{Environment.NewLine}Please select a valid output folder.",
+                                    "Output Folder Not Found", MessageBoxButton.OK, MessageBoxImage.Warning)
+                    Log &= $"Export aborted: Output folder not found — {OutputPath}" & Environment.NewLine
+                    Return
+                End If
                 ' It checks for the filename duplication conflicts and throws error
                 Dim overwriteAll As Boolean? = Nothing
                 Dim conflictFiles As New List(Of String)
@@ -689,7 +779,13 @@ Namespace CreoPublisherApp.ViewModels
                     If System.IO.File.Exists(pdfPath) Then
                         If overwriteAll Is Nothing Then
                             Dim dlg As New FileConflictDialog(pdfName & ".pdf")
-                            dlg.Owner = Application.Current.MainWindow
+
+                            Dim owner = Application.Current.Windows.OfType(Of System.Windows.Window)().FirstOrDefault(Function(w) w.IsActive)
+
+                            If owner IsNot Nothing AndAlso Not Object.ReferenceEquals(owner, dlg) Then
+                                dlg.Owner = owner
+                            End If
+
                             dlg.ShowDialog()
                             'Select case based on the user selection the skipping of files takes place
                             Select Case dlg.UserChoice
@@ -758,6 +854,13 @@ Namespace CreoPublisherApp.ViewModels
                     Log &= "Failed to initialize Creo session." & Environment.NewLine
                     Return
                 End If
+                ' NOW enforce license
+                If Not LicenseManager.CheckLicense() Then
+                    MessageBox.Show("License inactive. Export blocked.")
+                    _openProe.KillCreO()
+                    Return
+                End If
+
 
                 _proeCommonFuncs.setConfigOption("display_planes", "no")
                 _proeCommonFuncs.setConfigOption("display_axes", "no")
@@ -766,6 +869,7 @@ Namespace CreoPublisherApp.ViewModels
 
                 _proeCommonFuncs.ExportAllDrawingsAsPDF(filesToExport, OutputPath, IsMergeEnabled)
                 '_proeCommonFuncs.ExportAllDrawingsAsSTEP(filesToExport, OutputPath)
+
 
                 _openProe.KillCreO()
                 'After exporting all the selected files and publishing.
@@ -776,7 +880,7 @@ Namespace CreoPublisherApp.ViewModels
 
                 '  Export report
                 ExportReportToCsv(selectedFiles)
-                MessageBox.Show($"PDF export completed suc cessfully for {filesToExport.Count} files!" & vbCrLf &
+                MessageBox.Show($"PDF export completed successfully for {filesToExport.Count} files!" & vbCrLf &
                                 "A detailed report has been saved in the output folder.",
                                 "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information)
 

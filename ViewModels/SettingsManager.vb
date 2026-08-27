@@ -15,14 +15,16 @@
     Private Sub New()
         CreoPath = My.Settings.CreoPath
         WorkingDirectory = My.Settings.WorkingDirectory
-        ' Defaults
-        WatermarkText = "CONFIDENTIAL"
-        WatermarkOpacity = 0.3
-        WatermarkFontSize = 40
-        WatermarkColor = Colors.Gray
-        WatermarkPosition = "Diagonal"
 
+        WatermarkText = My.Settings.WatermarkText
+        WatermarkOpacity = My.Settings.WatermarkOpacity
+        WatermarkFontSize = My.Settings.WatermarkFontSize
+        WatermarkColor = ColorConverter.ConvertFromString(My.Settings.WatermarkColor)
+        WatermarkPosition = My.Settings.WatermarkPosition
+        EnableWatermark = My.Settings.EnableWatermark
     End Sub
+
+
 
     Public Shared ReadOnly Property Instance As SettingsManager
         Get

@@ -4,110 +4,311 @@ Imports System.Security.Cryptography
 Imports Microsoft.Win32
 Imports System.Management
 
-
 Public Module LicenseManager
+    Public Enum LicenseError
+        None
+        LicenseFileMissing
+        NotActivated
+        Expired
+        LicenseTransferred
+        MachineMismatch
+        LicenseTampered
+        CryptoError
+    End Enum
+
     Private Const LicfilePwd As String = "Kbe@Adr"
-    Private Const LicenseFilePath As String = "Resources\License\License.lic"
-    Private Const RegPath As String = "Software\MyCompany\MyTool"
+    Private Const UsedLicensesRegPath As String = "Software\MyCompany\MyTool\UsedLicenses"
 
+    ' =====================================================
+    ' LICENSE STORAGE LOCATION
+    ' =====================================================
+    Public Function GetLicensePath() As String
+        Dim basePath = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
+        Dim folder = Path.Combine(basePath, "MyCompany", "BulkPDFPublisher", "License")
+
+        If Not Directory.Exists(folder) Then
+            Directory.CreateDirectory(folder)
+        End If
+
+        Return Path.Combine(folder, "License.lic")
+    End Function
+
+    ' =====================================================
+    ' CHECK LICENSE (ACTIVE LICENSE ONLY)
+    ' =====================================================
     Public Function CheckLicense() As Boolean
-        Dim fullPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, LicenseFilePath)
-        Dim tempPath = Path.GetTempPath() & "TempLicCheck.txt"
-
+        Dim fullPath = GetLicensePath()
         If Not File.Exists(fullPath) Then Return False
 
-        ' Decrypt License.lic
-        Dim key = CreateKey(LicfilePwd)
-        Dim iv = CreateIV(LicfilePwd)
-        Try
-            EncryptOrDecryptFile(fullPath, tempPath, key, iv, CryptoAction.ActionDecrypt)
-        Catch
-            Return False
-        End Try
+        Dim tempPath = Path.GetTempFileName()
 
-        ' Read decrypted license
         Try
-            Using reader As New StreamReader(tempPath)
-                Dim expiry = reader.ReadLine().Replace("LastDate:", "").Trim()
-                If expiry <> "Nil" AndAlso DateTime.TryParse(expiry, Nothing) Then
-                    If DateTime.Parse(expiry) < DateTime.Today Then Return False
+            Decrypt(fullPath, tempPath)
+            Dim data = ReadLicense(tempPath)
+
+            ' Must be activated
+            If Not data.ContainsKey("Activated") OrElse data("Activated") <> "True" Then
+                Return False
+            End If
+
+            ' Expiry
+            If data.ContainsKey("LastDate") AndAlso data("LastDate") <> "Nil" Then
+                Dim exp As DateTime
+                If DateTime.TryParse(data("LastDate"), exp) AndAlso exp < DateTime.Today Then
+                    Return False
                 End If
-                ' Validate request code
-                Dim expectedCode = GenerateLicenseCode()
-                For Each ch In expectedCode
-                    If reader.EndOfStream Then Return False
-                    Dim val = reader.ReadLine()
-                    If Asc(ch) <> Integer.Parse(val) Then Return False
-                Next
-            End Using
+            End If
+
+            Dim currentSystemCode = GenerateLicenseCode()
+            If data.ContainsKey("LicenseUid") AndAlso
+   IsLicenseUsed("TRANSFERRED_LIC_" & data("LicenseUid")) Then
+                Return False
+            End If
+
+
+            ' ❌ Must belong to this system
+            If data("LicenseId") <> currentSystemCode Then
+                Return False
+            End If
+
+            ' Character binding
+            For i = 0 To currentSystemCode.Length - 1
+                Dim key = $"C{i}"
+                If Not data.ContainsKey(key) OrElse
+                   Asc(currentSystemCode(i)) <> Integer.Parse(data(key)) Then
+                    Return False
+                End If
+            Next
+
             Return True
+
         Catch
             Return False
+        Finally
+            Try : File.Delete(tempPath) : Catch : End Try
         End Try
     End Function
 
-    Public Function GenerateLicenseCode() As String
-        Dim rCode = GetSystemInfo()
-        Return rCode
-    End Function
+    ' =====================================================
+    ' ACTIVATE LICENSE (FIRST TIME)
+    ' =====================================================
+    Public Function ActivateLicense() As Boolean
+        Dim fullPath = GetLicensePath()
+        If Not File.Exists(fullPath) Then Return False
 
-    Private Function GetSystemInfo() As String
-        Dim info = ""
-        info &= GetWMI("Win32_Processor", "ProcessorId")
-        info &= GetWMI("Win32_BaseBoard", "Product")
-        info &= GetWMI("Win32_DiskDrive", "Signature")
-        info &= GetWMI("Win32_BIOS", "Version")
-        Return New String(info.Where(Function(c) Char.IsLetterOrDigit(c)).ToArray())
-    End Function
+        Dim tempPath = Path.GetTempFileName()
 
-    Private Function GetWMI(className As String, propertyName As String) As String
         Try
-            Dim searcher As New ManagementObjectSearcher($"SELECT * FROM {className}")
-            For Each obj In searcher.Get()
-                If obj(propertyName) IsNot Nothing Then
-                    Return obj(propertyName).ToString()
-                End If
+            Decrypt(fullPath, tempPath)
+            Dim data = ReadLicense(tempPath)
+
+            Dim currentSystemCode = GenerateLicenseCode()
+
+            If data.ContainsKey("LicenseUid") AndAlso
+   IsLicenseUsed("TRANSFERRED_LIC_" & data("LicenseUid")) Then
+                Return False
+            End If
+
+
+            ' ❌ Must belong to this system
+            If data("LicenseId") <> currentSystemCode Then
+                Return False
+            End If
+
+            data("Activated") = "True"
+            data("Transferred") = "False"
+
+            WriteLicense(tempPath, data)
+            Encrypt(tempPath, fullPath)
+
+            Return True
+
+        Catch
+            Return False
+        Finally
+            Try : File.Delete(tempPath) : Catch : End Try
+        End Try
+    End Function
+
+    ' =====================================================
+    ' DEACTIVATE LICENSE (NO PERMANENT BLOCK)
+    ' =====================================================
+    Public Function DeactivateLicense() As Boolean
+        Dim fullPath = GetLicensePath()
+        If Not File.Exists(fullPath) Then Return False
+
+        Dim tempPath = Path.GetTempFileName()
+
+        Try
+            Decrypt(fullPath, tempPath)
+            Dim data = ReadLicense(tempPath)
+
+            data("Activated") = "False"
+
+            WriteLicense(tempPath, data)
+            Encrypt(tempPath, fullPath)
+
+            Return True
+
+        Catch
+            Return False
+        Finally
+            Try : File.Delete(tempPath) : Catch : End Try
+        End Try
+    End Function
+
+    ' =====================================================
+    ' TRANSFER LICENSE (A → B)
+    ' =====================================================
+    Public Function TransferLicense(newSystemCode As String,
+                                    savePath As String) As Boolean
+
+        Dim fullPath = GetLicensePath()
+        If Not File.Exists(fullPath) Then Return False
+
+        Dim tempPath = Path.GetTempFileName()
+
+        Try
+            Decrypt(fullPath, tempPath)
+            Dim data = ReadLicense(tempPath)
+
+            ' Already transferred
+            If data.ContainsKey("Transferred") AndAlso data("Transferred") = "True" Then
+                Return False
+            End If
+
+            ' 🔒 Kill original license permanently
+            data("Activated") = "False"
+            data("Transferred") = "True"
+
+            WriteLicense(tempPath, data)
+            Encrypt(tempPath, fullPath)
+
+            ' 🔐 Block ORIGINAL license forever
+            MarkLicenseUsed("TRANSFERRED_LIC_" & data("LicenseUid"))
+
+
+            ' 🆕 Create new license for target system
+            Dim newData As New Dictionary(Of String, String)
+
+            For Each kv In data
+                newData(kv.Key) = kv.Value
+            Next
+
+            newData("LicenseId") = newSystemCode
+            newData("Activated") = "True"
+            newData("Transferred") = "False"
+
+            ' Rebind C0..Cn
+            For Each k In newData.Keys.Where(Function(x) x.StartsWith("C")).ToList()
+                newData.Remove(k)
+            Next
+
+            For i = 0 To newSystemCode.Length - 1
+                newData($"C{i}") = Asc(newSystemCode(i)).ToString()
+            Next
+
+            WriteLicense(tempPath, newData)
+            Encrypt(tempPath, savePath)
+
+            Return True
+
+        Catch
+            Return False
+        Finally
+            Try : File.Delete(tempPath) : Catch : End Try
+        End Try
+    End Function
+
+    ' =====================================================
+    ' FILE IO
+    ' =====================================================
+    Private Function ReadLicense(path As String) As Dictionary(Of String, String)
+        Dim dict As New Dictionary(Of String, String)
+        For Each line In File.ReadAllLines(path)
+            If line.Contains(":") Then
+                Dim p = line.Split(":"c, 2)
+                dict(p(0).Trim()) = p(1).Trim()
+            End If
+        Next
+        Return dict
+    End Function
+
+    Private Sub WriteLicense(path As String, data As Dictionary(Of String, String))
+        Using w As New StreamWriter(path, False)
+            For Each kv In data
+                w.WriteLine($"{kv.Key}:{kv.Value}")
+            Next
+        End Using
+    End Sub
+
+    ' =====================================================
+    ' REGISTRY
+    ' =====================================================
+    Private Function IsLicenseUsed(id As String) As Boolean
+        Using k = Registry.CurrentUser.OpenSubKey(UsedLicensesRegPath)
+            Return k IsNot Nothing AndAlso k.GetValue(id) IsNot Nothing
+        End Using
+    End Function
+
+    Private Sub MarkLicenseUsed(id As String)
+        Using k = Registry.CurrentUser.CreateSubKey(UsedLicensesRegPath)
+            k.SetValue(id, DateTime.Now.ToString("s"))
+        End Using
+    End Sub
+
+    ' =====================================================
+    ' MACHINE CODE
+    ' =====================================================
+    Public Function GenerateLicenseCode() As String
+        Dim raw =
+            GetWMI("Win32_Processor", "ProcessorId") &
+            GetWMI("Win32_BaseBoard", "Product") &
+            GetWMI("Win32_DiskDrive", "Signature") &
+            GetWMI("Win32_BIOS", "Version")
+
+        Return New String(raw.Where(Function(c) Char.IsLetterOrDigit(c)).ToArray())
+    End Function
+
+    Private Function GetWMI(cls As String, prop As String) As String
+        Try
+            For Each o In New ManagementObjectSearcher($"SELECT * FROM {cls}").Get()
+                If o(prop) IsNot Nothing Then Return o(prop).ToString()
             Next
         Catch
         End Try
         Return ""
     End Function
 
-    Public Enum CryptoAction
-        ActionEncrypt = 1
-        ActionDecrypt = 2
-    End Enum
+    ' =====================================================
+    ' CRYPTO
+    ' =====================================================
+    Private Sub Encrypt(input As String, output As String)
+        Crypto(input, output, True)
+    End Sub
 
-    Public Function CreateKey(password As String) As Byte()
-        Dim hash = New SHA512Managed().ComputeHash(Encoding.ASCII.GetBytes(password))
-        Return hash.Take(32).ToArray()
-    End Function
+    Private Sub Decrypt(input As String, output As String)
+        Crypto(input, output, False)
+    End Sub
 
-    Public Function CreateIV(password As String) As Byte()
-        Dim hash = New SHA512Managed().ComputeHash(Encoding.ASCII.GetBytes(password))
-        Return hash.Skip(32).Take(16).ToArray()
-    End Function
+    Private Sub Crypto(input As String, output As String, encrypt As Boolean)
+        Dim key = SHA512.Create().ComputeHash(Encoding.UTF8.GetBytes(LicfilePwd))
 
-    Public Sub EncryptOrDecryptFile(inputPath As String, outputPath As String, key() As Byte, iv() As Byte, direction As CryptoAction)
-        Using fsInput As New FileStream(inputPath, FileMode.Open, FileAccess.Read)
-            Using fsOutput As New FileStream(outputPath, FileMode.Create, FileAccess.Write)
-                Dim csp = New RijndaelManaged()
-                Dim cs As CryptoStream
-                If direction = CryptoAction.ActionEncrypt Then
-                    cs = New CryptoStream(fsOutput, csp.CreateEncryptor(key, iv), CryptoStreamMode.Write)
-                Else
-                    cs = New CryptoStream(fsOutput, csp.CreateDecryptor(key, iv), CryptoStreamMode.Write)
-                End If
+        Using aes As New RijndaelManaged()
+            aes.Key = key.Take(32).ToArray()
+            aes.IV = key.Skip(32).Take(16).ToArray()
 
-                Dim buffer(4096) As Byte
-                Dim bytesRead As Integer
-                Do
-                    bytesRead = fsInput.Read(buffer, 0, buffer.Length)
-                    If bytesRead = 0 Then Exit Do
-                    cs.Write(buffer, 0, bytesRead)
-                Loop
-                cs.Close()
+            Using fsIn As New FileStream(input, FileMode.Open)
+                Using fsOut As New FileStream(output, FileMode.Create)
+                    Using cs As New CryptoStream(
+                        fsOut,
+                        If(encrypt, aes.CreateEncryptor(), aes.CreateDecryptor()),
+                        CryptoStreamMode.Write)
+                        fsIn.CopyTo(cs)
+                    End Using
+                End Using
             End Using
         End Using
     End Sub
+
 End Module

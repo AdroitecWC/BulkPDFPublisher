@@ -6,6 +6,7 @@ Partial Class Application
     Inherits System.Windows.Application
 
     Protected Overrides Sub OnStartup(e As StartupEventArgs)
+
         MyBase.OnStartup(e)
 
         Dim args = e.Args

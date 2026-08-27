@@ -10,12 +10,13 @@ Namespace CreoPublisherApp
 
         Public Sub New()
             InitializeComponent()
+
             txtSystemName.Text = Environment.MachineName
             txtRequestCode.Text = requestCode
 
-            ' Show expiry date if already licensed
             If LicenseManager.CheckLicense() Then
-                Dim licPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources\License\License.lic")
+                Dim licPath = LicenseManager.GetLicensePath()
+
                 If File.Exists(licPath) Then
                     Try
                         Using reader As New StreamReader(licPath)
@@ -27,7 +28,6 @@ Namespace CreoPublisherApp
                             End If
                         End Using
                     Catch
-                        ' Ignore read errors
                     End Try
                 End If
             End If
@@ -37,6 +37,7 @@ Namespace CreoPublisherApp
             Dim ofd As New OpenFileDialog With {
                 .Filter = "License Files (*.lic)|*.lic"
             }
+
             If ofd.ShowDialog() = True Then
                 txtFilePath.Text = ofd.FileName
             End If
@@ -44,25 +45,40 @@ Namespace CreoPublisherApp
 
         Private Sub btnActivate_Click(sender As Object, e As RoutedEventArgs)
             Dim selectedFile = txtFilePath.Text.Trim()
+
             If Not File.Exists(selectedFile) Then
-                MessageBox.Show("License file not found.", "Error", MessageBoxButton.OK, MessageBoxImage.Error)
+                MessageBox.Show("License file not found.", "Error",
+                        MessageBoxButton.OK, MessageBoxImage.Error)
                 Return
             End If
 
             Try
-                Dim targetPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources\License\License.lic")
-                Directory.CreateDirectory(Path.GetDirectoryName(targetPath))
+                Dim targetPath = LicenseManager.GetLicensePath()
+
+                ' Copy license to app location
                 File.Copy(selectedFile, targetPath, True)
 
+                ' 🔑 ACTIVATE FIRST (this was missing)
+                If Not LicenseManager.ActivateLicense() Then
+                    MessageBox.Show("License activation failed.", "Error",
+                            MessageBoxButton.OK, MessageBoxImage.Error)
+                    Return
+                End If
+
+                ' Optional safety check
                 If LicenseManager.CheckLicense() Then
-                    MessageBox.Show("License Activated!", "Success", MessageBoxButton.OK, MessageBoxImage.Information)
+                    MessageBox.Show("License Activated!", "Success",
+                            MessageBoxButton.OK, MessageBoxImage.Information)
                     DialogResult = True
                     Close()
                 Else
-                    MessageBox.Show("Invalid license file.", "Error", MessageBoxButton.OK, MessageBoxImage.Error)
+                    MessageBox.Show("License activation verification failed.", "Error",
+                            MessageBoxButton.OK, MessageBoxImage.Error)
                 End If
+
             Catch ex As Exception
-                MessageBox.Show("Activation failed: " & ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error)
+                MessageBox.Show("Activation failed: " & ex.Message,
+                        "Error", MessageBoxButton.OK, MessageBoxImage.Error)
             End Try
         End Sub
 
