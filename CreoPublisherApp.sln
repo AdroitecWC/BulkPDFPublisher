@@ -5,7 +5,7 @@ VisualStudioVersion = 17.13.35931.197
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "CreoPublisherApp", "CreoPublisherApp.vbproj", "{3F7AAD9B-4FBC-42F9-92FD-53C5DBCD0B14}"
 EndProject
-Project("{54435603-DBB4-11D2-8724-00A0C9A8B90C}") = "Bulk PDF Publisher", "..\Bulk PDF Publisher\Bulk PDF Publisher.vdproj", "{271105B9-D4BB-885B-6D6B-0A302A8173AA}"
+Project("{54435603-DBB4-11D2-8724-00A0C9A8B90C}") = "BulkPdfPublisherFL", "..\BulkPdfPublisherFL\BulkPdfPublisherFL.vdproj", "{8106BB8C-F2B1-90F5-52A2-D9F85F16C720}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -23,10 +23,10 @@ Global
 		{3F7AAD9B-4FBC-42F9-92FD-53C5DBCD0B14}.Release|Any CPU.Build.0 = Release|Any CPU
 		{3F7AAD9B-4FBC-42F9-92FD-53C5DBCD0B14}.Release|x86.ActiveCfg = Release|Any CPU
 		{3F7AAD9B-4FBC-42F9-92FD-53C5DBCD0B14}.Release|x86.Build.0 = Release|Any CPU
-		{271105B9-D4BB-885B-6D6B-0A302A8173AA}.Debug|Any CPU.ActiveCfg = Debug
-		{271105B9-D4BB-885B-6D6B-0A302A8173AA}.Debug|x86.ActiveCfg = Debug
-		{271105B9-D4BB-885B-6D6B-0A302A8173AA}.Release|Any CPU.ActiveCfg = Release
-		{271105B9-D4BB-885B-6D6B-0A302A8173AA}.Release|x86.ActiveCfg = Release
+		{8106BB8C-F2B1-90F5-52A2-D9F85F16C720}.Debug|Any CPU.ActiveCfg = Debug
+		{8106BB8C-F2B1-90F5-52A2-D9F85F16C720}.Debug|x86.ActiveCfg = Debug
+		{8106BB8C-F2B1-90F5-52A2-D9F85F16C720}.Release|Any CPU.ActiveCfg = Release
+		{8106BB8C-F2B1-90F5-52A2-D9F85F16C720}.Release|x86.ActiveCfg = Release
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

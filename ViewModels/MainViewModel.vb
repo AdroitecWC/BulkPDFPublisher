@@ -53,6 +53,7 @@ Namespace CreoPublisherApp.ViewModels
 
         ' Command to open Settings window
         Public Property OpenSettingsWindowCommand As ICommand
+        Public Property OpenLicenseSettingsWindowCommand As ICommand
 
         Public Sub New()
             _filteredFilesView = CollectionViewSource.GetDefaultView(_files)
@@ -70,6 +71,7 @@ Namespace CreoPublisherApp.ViewModels
             ClearFiltersCommand = New RelayCommand(AddressOf ClearFilters)
 
             OpenSettingsWindowCommand = New RelayCommand(AddressOf OpenSettingsWindow)
+            OpenLicenseSettingsWindowCommand = New RelayCommand(AddressOf OpenLicenseSettingsWindow)
             ExportReportCommand = New RelayCommand(AddressOf ExportReportCommandExecute)
             OpenReportCommand = New RelayCommand(AddressOf OpenReportCommandExecute, AddressOf CanOpenReport)
         End Sub
@@ -800,6 +802,13 @@ Namespace CreoPublisherApp.ViewModels
             Dim settingsWindow As New SettingsWindow()
             settingsWindow.DataContext = New SettingsWindowViewModel()
             settingsWindow.ShowDialog()
+        End Sub
+
+        ' Open license management
+        Private Sub OpenLicenseSettingsWindow()
+            Dim licenseSettingsWindow As New LicenseSettingsWindow()
+            licenseSettingsWindow.DataContext = New LicenseSettingsViewModel()
+            licenseSettingsWindow.ShowDialog()
         End Sub
 
         ' INotifyPropertyChanged implementation
