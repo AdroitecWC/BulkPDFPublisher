@@ -220,14 +220,9 @@ Namespace CreoPublisherApp
         End Sub
 
         Private Sub LoadThemePreference()
-            Try
-                ' Load from settings if available
-                isDarkTheme = My.Settings.IsDarkTheme
-            Catch ex As Exception
-                ' Default to light theme if settings not available
-                isDarkTheme = False
-                System.Diagnostics.Debug.WriteLine($"Could not load theme preference: {ex.Message}")
-            End Try
+            ' Always start in light mode regardless of whatever was toggled last session --
+            ' the in-session toggle still works, it just doesn't carry over to the next launch.
+            isDarkTheme = False
 
             ToggleThemeButton.IsChecked = isDarkTheme
 

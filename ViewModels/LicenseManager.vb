@@ -7,6 +7,7 @@ Imports System.Security.Cryptography
 Imports System.Timers
 Imports Microsoft.Win32
 Imports System.Management
+Imports System.Globalization
 
 Public Module LicenseManager
 
@@ -21,12 +22,14 @@ Public Module LicenseManager
         CryptoError         ' Unexpected crypto exception
         NoSeatsAvailable    ' Floating: all seats checked out
         ServerUnreachable   ' Floating: cannot reach license server
-        InvalidLicense      ' Floating: uid not registered on server
+        InvalidLicense      ' Floating: uid/code not registered on server
         WrongProduct        ' License is for a different product
+        ProductNotLicensed  ' Floating: Activation Code is valid, but no tranche is loaded for this product yet
+        AmbiguousCustomer   ' Floating: Activation Code matched tranches for more than one customer
     End Enum
 
     Private Const LicfilePwd As String = "Kbe@Adr"
-    Private Const AppProduct As String = "Bulk PDF publish"
+    Public Const AppProduct As String = "Bulk PDF publish"
     ' Scoped by ToolName -- these paths used to be the literal, identical string across
     ' every Adroitec tool ("...\MyTool\..."), so activating one tool with a License Key
     ' would overwrite the same registry value another tool reads back, making it look
@@ -44,6 +47,22 @@ Public Module LicenseManager
     Public LastSeatsInUse As Integer = 0
     Public LastSeatsMax As Integer = 0
 
+    ' Filled by ActivateWithKey so the caller can tell "server unreachable" apart
+    ' from other failures without parsing the message string.
+    Public LastActivationError As LicenseError = LicenseError.None
+
+    ' Same idea as LastActivationError, but for BorrowSeat.
+    Public LastBorrowError As LicenseError = LicenseError.None
+
+    ''' <summary>The server URL the last checkout attempt actually used -- lets a
+    ''' "server not available" dialog show what was tried instead of leaving the user
+    ''' to guess whether the address they typed even parsed correctly.</summary>
+    Public ReadOnly Property LastServerUrl As String
+        Get
+            Return _serverUrl
+        End Get
+    End Property
+
     ' =====================================================
     ' PUBLIC API
     ' =====================================================
@@ -55,6 +74,11 @@ Public Module LicenseManager
 
     ''' <summary>Returns the specific reason for failure, or None on success.</summary>
     Public Function CheckLicenseDetailed() As LicenseError
+        ' A live borrow is checked first and needs no network call at all -- this is
+        ' what lets the app run fully offline for the borrow window. See TryGetActiveBorrow.
+        Dim borrowExpiry As DateTime
+        If TryGetActiveBorrow(borrowExpiry) Then Return LicenseError.None
+
         ' A key-based activation (License Key field, no .lic file at all) takes
         ' priority over a local file every time — once someone's activated with a
         ' key, that's the intended source of truth for this install.
@@ -62,7 +86,7 @@ Public Module LicenseManager
         If activatedUid IsNot Nothing Then
             _serverUrl = If(GetServerUrlOverride(), "")
             If _serverUrl = "" Then Return LicenseError.LicenseTampered
-            Return FloatingCheckoutDetailed(activatedUid, GenerateLicenseCode())
+            Return FloatingCheckoutDetailed(activatedUid, GenerateLicenseCode(), isActivationCode:=True)
         End If
 
         Dim fullPath = GetLicensePath()
@@ -81,15 +105,13 @@ Public Module LicenseManager
                 Return LicenseError.NotActivated
             End If
 
-            ' Expiry check — same for both node-locked and floating
-            If data.ContainsKey("LastDate") AndAlso data("LastDate") <> "Nil" Then
-                Dim exp As DateTime
-                If DateTime.TryParse(data("LastDate"), exp) AndAlso exp < DateTime.Today Then
-                    Return LicenseError.Expired
-                End If
-            End If
-
             ' ── FLOATING LICENSE ─────────────────────────────────────────────
+            ' Checked before the local LastDate gate below on purpose: a floating
+            ' tranche's expiry lives on the NLM's live pool and can be renewed there
+            ' without this client ever re-downloading a new .lic, so the date baked
+            ' into whichever file happens to be loaded is not authoritative -- let
+            ' FloatingCheckoutDetailed's server round-trip decide instead (it maps the
+            ' server's own "license_expired" reason to LicenseError.Expired).
             If data.ContainsKey("LicenseType") AndAlso data("LicenseType") = "Floating" Then
                 Dim licProduct = If(data.ContainsKey("Product"), data("Product"), "")
                 If Not licProduct.StartsWith(AppProduct, StringComparison.OrdinalIgnoreCase) Then
@@ -104,6 +126,14 @@ Public Module LicenseManager
                 If uid = "" OrElse _serverUrl = "" Then Return LicenseError.LicenseTampered
 
                 Return FloatingCheckoutDetailed(uid, GenerateLicenseCode())
+            End If
+
+            ' Expiry check — node-locked only now (see comment above for floating)
+            If data.ContainsKey("LastDate") AndAlso data("LastDate") <> "Nil" Then
+                Dim exp As DateTime
+                If DateTime.TryParse(data("LastDate"), exp) AndAlso exp < DateTime.Today Then
+                    Return LicenseError.Expired
+                End If
             End If
 
             ' ── NODE-LOCKED LICENSE ──────────────────────────────────────────
@@ -176,18 +206,143 @@ Public Module LicenseManager
     ' DEACTIVATE LICENSE
     ' =====================================================
     Public Function DeactivateLicense() As Boolean
+        ' Activation-Code-based floating activation has no .lic file at all -- release
+        ' the checked-out seat and forget the saved code so the next launch requires
+        ' reactivation, instead of falling through to the file-based path below and
+        ' reporting "no active license found" for an install that IS actually active.
+        Dim activatedUid = GetActivatedUid()
+        Dim didSomething = False
+        If activatedUid IsNot Nothing Then
+            FloatingRelease()
+            ClearActivatedUid()
+            didSomething = True
+        End If
+
+        ' Always also clear any file-based activation, even when an Activation Code was
+        ' the live path above -- a stale .lic file left next to the exe from an earlier
+        ' attempt (still marked Activated=True) must not resurface as a bogus license on
+        ' the next launch once the code is cleared and CheckLicenseDetailed falls through
+        ' to the file-based path. Only release a floating seat for it if the file path was
+        ' actually the one in use (activatedUid was Nothing) -- otherwise that seat was
+        ' already released above.
+        Dim fullPath = GetLicensePath()
+        If File.Exists(fullPath) Then
+            Try
+                Dim data = ReadLicense(DecryptFile(fullPath))
+
+                If activatedUid Is Nothing AndAlso data.ContainsKey("LicenseType") AndAlso data("LicenseType") = "Floating" Then
+                    FloatingRelease()
+                End If
+
+                data("Activated") = "False"
+                EncryptToFile(SerializeLicense(data), fullPath)
+                didSomething = True
+
+            Catch
+                ' Corrupt/unreadable file -- leave didSomething as-is from the code branch.
+            End Try
+        End If
+
+        Return didSomething
+    End Function
+
+    ' =====================================================
+    ' CHANGE LICENSE TYPE (switch node-locked <-> floating)
+    ' =====================================================
+
+    ''' <summary>Best-effort cleanup of whatever activation currently exists (borrow,
+    ''' activation-code floating, or file-based license), so a "Change License" action
+    ''' always leaves this install clean and ready for LicenseWindow to activate a
+    ''' different license on the next launch. Unlike DeactivateLicense(), this succeeds
+    ''' even if nothing was active yet -- the point is guaranteed clean state, not
+    ''' reporting whether there was anything to clean.</summary>
+    Public Function PrepareForLicenseTypeSwitch() As Boolean
+        Dim expiresLocal As DateTime
+        If TryGetActiveBorrow(expiresLocal) Then
+            Dim msg As String = Nothing
+            ReturnBorrowedSeat(msg)
+        End If
+
+        Dim activatedUid = GetActivatedUid()
+        If activatedUid IsNot Nothing Then
+            FloatingRelease()
+            ClearActivatedUid()
+        End If
+
+        ' Always also clear any file-based activation, even when an Activation Code was
+        ' the live path above -- a stale .lic file left next to the exe from an earlier
+        ' attempt (still marked Activated=True, possibly with an old/expired LastDate)
+        ' must not resurface (as LicenseError.Expired etc.) once the code is cleared and
+        ' CheckLicenseDetailed falls through to the file-based path on the next launch.
+        ' Only release a floating seat for it if the file path was actually the one in
+        ' use (activatedUid was Nothing) -- otherwise that seat was already released above.
+        Dim fullPath = GetLicensePath()
+        If File.Exists(fullPath) Then
+            Try
+                Dim data = ReadLicense(DecryptFile(fullPath))
+
+                If activatedUid Is Nothing AndAlso data.ContainsKey("LicenseType") AndAlso data("LicenseType") = "Floating" Then
+                    FloatingRelease()
+                End If
+
+                data("Activated") = "False"
+                EncryptToFile(SerializeLicense(data), fullPath)
+            Catch
+                ' A corrupt/unreadable file shouldn't block switching -- LicenseWindow
+                ' will just treat it as absent/invalid on the next launch.
+            End Try
+        End If
+
+        ' Deliberately NOT clearing FloatingServerOverride here -- it's just the last
+        ' connection endpoint, not tied to which license type is active, and wiping it
+        ' forced a blind retype of the server IP:port on every Change License (the
+        ' Network License Server field otherwise starts blank) where any typo/blank
+        ' entry then looked exactly like the server being unreachable. LicenseWindow
+        ' now pre-fills from it via GetLastServerAddress(); the user can still type a
+        ' different address to point at a different server.
+        Return True
+    End Function
+
+    ' =====================================================
+    ' TRANSFER LICENSE (node-locked only, one-time)
+    ' =====================================================
+    Public Function TransferLicense(newSystemCode As String, savePath As String) As Boolean
         Dim fullPath = GetLicensePath()
         If Not File.Exists(fullPath) Then Return False
 
         Try
             Dim data = ReadLicense(DecryptFile(fullPath))
 
+            ' Floating licenses cannot be machine-transferred
             If data.ContainsKey("LicenseType") AndAlso data("LicenseType") = "Floating" Then
-                FloatingRelease()
+                Return False
+            End If
+
+            If data.ContainsKey("Transferred") AndAlso data("Transferred") = "True" Then
+                Return False
             End If
 
             data("Activated") = "False"
+            data("Transferred") = "True"
             EncryptToFile(SerializeLicense(data), fullPath)
+            MarkLicenseUsed("TRANSFERRED_LIC_" & data("LicenseUid"))
+
+            Dim newData As New Dictionary(Of String, String)
+            For Each kv In data
+                newData(kv.Key) = kv.Value
+            Next
+            newData("LicenseId") = newSystemCode
+            newData("Activated") = "True"
+            newData("Transferred") = "False"
+
+            For Each k In newData.Keys.Where(Function(x) x.StartsWith("C")).ToList()
+                newData.Remove(k)
+            Next
+            For i = 0 To newSystemCode.Length - 1
+                newData($"C{i}") = Asc(newSystemCode(i)).ToString()
+            Next
+
+            EncryptToFile(SerializeLicense(newData), savePath)
             Return True
 
         Catch
@@ -198,15 +353,18 @@ Public Module LicenseManager
     ' =====================================================
     ' FLOATING — CHECKOUT / RELEASE / HEARTBEAT
     ' =====================================================
-    Private Function FloatingCheckoutDetailed(uid As String, machineCode As String) As LicenseError
+    Private Function FloatingCheckoutDetailed(uid As String, machineCode As String, Optional isActivationCode As Boolean = False) As LicenseError
         Try
             Dim machineName = Environment.MachineName
             Dim form As New Dictionary(Of String, String) From {
-                {"uid", uid},
                 {"machine", machineCode},
                 {"machine_name", machineName},
                 {"product", AppProduct}
             }
+            ' A file-based/legacy per-product License Key is sent as "uid" (exact-match
+            ' lookup on the server); the shared, admin-set Activation Code is sent as
+            ' "code" (resolved by product name instead) -- see LicenseServer.Checkout().
+            form(If(isActivationCode, "code", "uid")) = uid
 
             Dim json As String
             Try
@@ -250,6 +408,9 @@ Public Module LicenseManager
                 If reason = "no_seats" Then Return LicenseError.NoSeatsAvailable
                 If reason = "invalid_license" Then Return LicenseError.InvalidLicense
                 If reason = "wrong_product" Then Return LicenseError.WrongProduct
+                If reason = "product_not_licensed" Then Return LicenseError.ProductNotLicensed
+                If reason = "ambiguous_customer" Then Return LicenseError.AmbiguousCustomer
+                If reason = "license_expired" Then Return LicenseError.Expired
                 Return LicenseError.NoSeatsAvailable
             End Using
 
@@ -295,6 +456,271 @@ Public Module LicenseManager
         End If
     End Sub
 
+    ' =====================================================
+    ' FLOATING — BORROW / RETURN (offline use for N days)
+    ' =====================================================
+
+    ''' <summary>
+    ''' Resolves the currently-active floating source (Activation Code or file-based
+    ''' Floating license) the same way CheckLicenseDetailed()'s floating branches do,
+    ''' for BorrowSeat() to reuse. Kept as a read-only duplication rather than a shared
+    ''' refactor of CheckLicenseDetailed() itself, to avoid touching that already-audited
+    ''' path -- if the resolution rules there ever change, mirror the change here too.
+    ''' </summary>
+    Private Function ResolveFloatingSource(ByRef uid As String, ByRef isActivationCode As Boolean, ByRef url As String) As Boolean
+        Dim activatedUid = GetActivatedUid()
+        If activatedUid IsNot Nothing Then
+            Dim ov = GetServerUrlOverride()
+            If String.IsNullOrEmpty(ov) Then Return False
+            uid = activatedUid
+            isActivationCode = True
+            url = ov
+            Return True
+        End If
+
+        Dim fullPath = GetLicensePath()
+        If Not File.Exists(fullPath) Then Return False
+        Try
+            Dim data = ReadLicense(DecryptFile(fullPath))
+            If Not data.ContainsKey("LicenseType") OrElse data("LicenseType") <> "Floating" Then Return False
+
+            Dim licUid = If(data.ContainsKey("LicenseUid"), data("LicenseUid"), "")
+            Dim licUrl = If(GetServerUrlOverride(), If(data.ContainsKey("ServerUrl"), data("ServerUrl").TrimEnd("/"c), ""))
+            If licUid = "" OrElse licUrl = "" Then Return False
+
+            uid = licUid
+            isActivationCode = False
+            url = licUrl
+            Return True
+        Catch
+            Return False
+        End Try
+    End Function
+
+    ''' <summary>Checks out a seat for N hours of fully offline use (the server clamps
+    ''' this to both its own max-borrow-window and the license's own expiry -- see
+    ''' LicenseServer.Borrow()). On success, stops any live heartbeat (the server already
+    ''' converted or would reject a duplicate live session) and writes an encrypted,
+    ''' machine-bound Borrow.lic — see TryGetActiveBorrow for how it's read back with no
+    ''' network call.</summary>
+    Public Function BorrowSeat(hours As Double, ByRef message As String) As Boolean
+        LastBorrowError = LicenseError.None
+
+        Dim uid As String = Nothing
+        Dim isActivationCode As Boolean
+        Dim url As String = Nothing
+        If Not ResolveFloatingSource(uid, isActivationCode, url) Then
+            message = "Activate a floating license first."
+            Return False
+        End If
+        _serverUrl = url
+
+        Try
+            Dim form As New Dictionary(Of String, String) From {
+                {"machine", GenerateLicenseCode()},
+                {"machine_name", Environment.MachineName},
+                {"product", AppProduct},
+                {"hours", hours.ToString(Globalization.CultureInfo.InvariantCulture)}
+            }
+            form(If(isActivationCode, "code", "uid")) = uid
+
+            Dim json As String
+            Try
+                Dim resp = _http.PostAsync($"{url}/borrow.php", New FormUrlEncodedContent(form)).GetAwaiter().GetResult()
+                json = resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+            Catch
+                LastBorrowError = LicenseError.ServerUnreachable
+                message = $"Could not reach a license server at {url}."
+                Return False
+            End Try
+
+            If Not json.TrimStart().StartsWith("{") Then
+                LastBorrowError = LicenseError.ServerUnreachable
+                message = $"No license server responded at {url}."
+                Return False
+            End If
+
+            Using doc = JsonDocument.Parse(json)
+                Dim root = doc.RootElement
+                Dim successEl As JsonElement
+                Dim success = root.TryGetProperty("success", successEl) AndAlso successEl.ValueKind = JsonValueKind.True
+
+                Dim tokenEl As JsonElement
+                Dim expEl As JsonElement
+                If success AndAlso root.TryGetProperty("borrow_token", tokenEl) AndAlso root.TryGetProperty("expires_utc", expEl) Then
+                    ' The server is authoritative on the borrow window -- stored verbatim,
+                    ' never computed locally, so a skewed client clock can't extend it.
+                    Dim expiresUtc As DateTime
+                    If DateTime.TryParse(expEl.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, expiresUtc) Then
+                        StopHeartbeat()
+                        _seatToken = ""
+                        WriteBorrowLicense(uid, isActivationCode, tokenEl.GetString(), expiresUtc)
+
+                        ' The server silently shortens the requested period if it would run
+                        ' past this license's own expiry, or past its own max-borrow-window --
+                        ' say so explicitly instead of just handing back a shorter date with
+                        ' no explanation for why it doesn't match what was typed.
+                        Dim clampedReasonEl As JsonElement
+                        Dim clampedReason = If(root.TryGetProperty("clamped_reason", clampedReasonEl), clampedReasonEl.GetString(), "")
+                        Dim clampNote = ""
+                        Select Case clampedReason
+                            Case "license_expiry"
+                                clampNote = " (shortened -- this license expires before the period you requested.)"
+                            Case "max_window"
+                                clampNote = " (shortened -- borrowing is capped at the maximum allowed window.)"
+                        End Select
+                        message = $"Borrowed for offline use until {expiresUtc.ToLocalTime():yyyy-MM-dd HH:mm}.{clampNote}"
+                        Return True
+                    End If
+                End If
+
+                Dim reasonEl As JsonElement
+                Dim reason = If(root.TryGetProperty("reason", reasonEl), reasonEl.GetString(), "")
+                Select Case reason
+                    Case "no_seats"
+                        LastBorrowError = LicenseError.NoSeatsAvailable
+                        message = "No seats available to borrow right now."
+                    Case "invalid_license"
+                        LastBorrowError = LicenseError.InvalidLicense
+                        message = "The server does not recognise this license."
+                    Case "wrong_product"
+                        LastBorrowError = LicenseError.WrongProduct
+                        message = "This license was issued for a different Adroitec product."
+                    Case "product_not_licensed"
+                        LastBorrowError = LicenseError.ProductNotLicensed
+                        message = "This server doesn't have a license for this product loaded yet."
+                    Case "ambiguous_customer"
+                        LastBorrowError = LicenseError.AmbiguousCustomer
+                        message = "This server has licenses loaded for more than one customer."
+                    Case "license_expired"
+                        LastBorrowError = LicenseError.Expired
+                        message = "This license has expired."
+                    Case Else
+                        LastBorrowError = LicenseError.NoSeatsAvailable
+                        message = "Could not borrow a seat."
+                End Select
+                Return False
+            End Using
+
+        Catch ex As Exception
+            LastBorrowError = LicenseError.ServerUnreachable
+            message = $"Borrow failed: {ex.Message}"
+            Return False
+        End Try
+    End Function
+
+    ''' <summary>True if Borrow.lic exists, is bound to this machine, and hasn't passed its
+    ''' ExpiresUtc yet -- entirely local, no network call, so this works while offline.
+    ''' A borrow past its expiry self-cleans here without needing to contact the server
+    ''' (which independently frees the seat on its own schedule regardless).</summary>
+    Public Function TryGetActiveBorrow(ByRef expiresLocal As DateTime) As Boolean
+        expiresLocal = Nothing
+        Dim path = GetBorrowLicensePath()
+        If Not File.Exists(path) Then Return False
+
+        Try
+            Dim data = ReadLicense(DecryptFile(path))
+
+            ' Bound to the machine that borrowed it -- a copied Borrow.lic must not
+            ' grant offline access on a second PC.
+            Dim machineId = GenerateLicenseCode()
+            If Not data.ContainsKey("MachineId") OrElse data("MachineId") <> machineId Then Return False
+
+            For i = 0 To machineId.Length - 1
+                Dim key = $"C{i}"
+                If Not data.ContainsKey(key) OrElse Asc(machineId(i)) <> Integer.Parse(data(key)) Then
+                    Return False
+                End If
+            Next
+
+            If Not data.ContainsKey("ExpiresUtc") Then Return False
+            Dim expiresUtc As DateTime
+            If Not DateTime.TryParse(data("ExpiresUtc"), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, expiresUtc) Then
+                Return False
+            End If
+
+            If expiresUtc <= DateTime.UtcNow Then
+                Try
+                    File.Delete(path)
+                Catch
+                End Try
+                Return False
+            End If
+
+            expiresLocal = expiresUtc.ToLocalTime()
+            Return True
+
+        Catch
+            Return False
+        End Try
+    End Function
+
+    ''' <summary>Returns a borrowed seat early. Only clears the local Borrow.lic on a
+    ''' successful, parseable server response -- a failed/unreachable call leaves it in
+    ''' place so offline use keeps working until the borrow naturally expires, and the
+    ''' user can retry once back online.</summary>
+    Public Function ReturnBorrowedSeat(ByRef message As String) As Boolean
+        Dim path = GetBorrowLicensePath()
+        If Not File.Exists(path) Then
+            message = "No active borrow to return."
+            Return False
+        End If
+
+        Dim data As Dictionary(Of String, String)
+        Try
+            data = ReadLicense(DecryptFile(path))
+        Catch
+            message = "Could not read the local borrow record."
+            Return False
+        End Try
+
+        Dim token = If(data.ContainsKey("BorrowToken"), data("BorrowToken"), "")
+        Dim url = If(data.ContainsKey("ServerUrl"), data("ServerUrl"), "")
+        If token = "" OrElse url = "" Then
+            message = "Local borrow record is incomplete."
+            Return False
+        End If
+
+        Try
+            Dim form As New Dictionary(Of String, String) From {{"seat_token", token}}
+            Dim resp = _http.PostAsync($"{url}/release.php", New FormUrlEncodedContent(form)).GetAwaiter().GetResult()
+            Dim json = resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+            If Not json.TrimStart().StartsWith("{") Then
+                message = "No response from the license server -- try again once you're back online."
+                Return False
+            End If
+        Catch
+            message = "Could not reach the license server -- try again once you're back online."
+            Return False
+        End Try
+
+        Try
+            File.Delete(path)
+        Catch
+        End Try
+        message = "Returned successfully."
+        Return True
+    End Function
+
+    Private Sub WriteBorrowLicense(uid As String, isActivationCode As Boolean, token As String, expiresUtc As DateTime)
+        Dim machineId = GenerateLicenseCode()
+        Dim data As New Dictionary(Of String, String) From {
+            {"Product", AppProduct},
+            {"Uid", uid},
+            {"IsActivationCode", If(isActivationCode, "True", "False")},
+            {"BorrowToken", token},
+            {"ServerUrl", _serverUrl},
+            {"StartedUtc", DateTime.UtcNow.ToString("O")},
+            {"ExpiresUtc", expiresUtc.ToString("O")},
+            {"MachineId", machineId}
+        }
+        For i = 0 To machineId.Length - 1
+            data($"C{i}") = Asc(machineId(i)).ToString()
+        Next
+
+        EncryptToFile(SerializeLicense(data), GetBorrowLicensePath())
+    End Sub
+
     Public Function IsFloatingLicense() As Boolean
         Dim licPath = GetLicensePath()
         If Not File.Exists(licPath) Then Return False
@@ -306,15 +732,56 @@ Public Module LicenseManager
         End Try
     End Function
 
+    ''' <summary>True if this install is set up to use a floating license at all — either via
+    ''' a Floating .lic file or via a saved Activation Code — regardless of whether a seat
+    ''' can currently be checked out.</summary>
+    Public Function IsFloatingConfigured() As Boolean
+        Return GetActivatedUid() IsNot Nothing OrElse IsFloatingLicense()
+    End Function
+
     ' =====================================================
     ' LICENSE PATH
     ' =====================================================
+    ''' <summary>
+    ''' Per-user, always-writable license storage under %APPDATA% -- NOT next to the exe.
+    ''' A dev build's exe folder happens to be writable, which masked this for a long
+    ''' time, but an MSI installs into C:\Program Files (x86)\..., which a normal
+    ''' (non-admin) user cannot write to, so creating "Resources\License\" there throws
+    ''' UnauthorizedAccessException on first launch -- exactly the "Access to the path
+    ''' ... is denied" crash this was hit with. One-time migration: if an old license
+    ''' file sits next to the exe from a pre-fix install, copy it here so re-activation
+    ''' isn't required.
+    ''' </summary>
     Public Function GetLicensePath() As String
-        Dim path = IOPath.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "License", "License.lic")
-        Dim dir = IOPath.GetDirectoryName(path)
-        If Not Directory.Exists(dir) Then Directory.CreateDirectory(dir)
+        Dim path = IOPath.Combine(GetLicenseDataDir(), "License.lic")
+        MigrateLegacyLicenseFileIfNeeded("License.lic", path)
         Return path
     End Function
+
+    Public Function GetBorrowLicensePath() As String
+        Dim path = IOPath.Combine(GetLicenseDataDir(), "Borrow.lic")
+        MigrateLegacyLicenseFileIfNeeded("Borrow.lic", path)
+        Return path
+    End Function
+
+    Private Function GetLicenseDataDir() As String
+        Dim dir = IOPath.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Adroitec Engineering Solutions Pvt Ltd", "BulkPDFPublisher", "License")
+        If Not Directory.Exists(dir) Then Directory.CreateDirectory(dir)
+        Return dir
+    End Function
+
+    Private Sub MigrateLegacyLicenseFileIfNeeded(fileName As String, newPath As String)
+        Try
+            If File.Exists(newPath) Then Return
+            Dim legacyPath = IOPath.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "License", fileName)
+            If File.Exists(legacyPath) Then File.Copy(legacyPath, newPath)
+        Catch
+            ' Best-effort -- a failed migration just means re-activation is needed,
+            ' not a crash on launch.
+        End Try
+    End Sub
 
     ' =====================================================
     ' MACHINE CODE
@@ -401,7 +868,7 @@ Public Module LicenseManager
 
     ''' <summary>
     ''' Parses a "host", "host:port", or "host@port" address (matching the Server
-    ''' Name shown on the FloatingLicenseServer app), probes its checkout endpoint,
+    ''' Name shown on the Network License Manager app), probes its checkout endpoint,
     ''' and — only if a server actually answers — saves it so future floating
     ''' checkouts use this address instead of the one baked into the .lic file.
     ''' </summary>
@@ -432,8 +899,54 @@ Public Module LicenseManager
         Return True
     End Function
 
+    ''' <summary>
+    ''' The previously saved server address in the same "host:port" form the user
+    ''' types into the Network License Server field, or "" if none is saved -- lets
+    ''' LicenseWindow pre-fill that field instead of forcing a blind retype every
+    ''' time activation is redone (e.g. after Change License clears the saved value),
+    ''' where a typo/blank entry looks exactly like the server being unreachable.
+    ''' </summary>
+    Public Function GetLastServerAddress() As String
+        Dim url = GetServerUrlOverride()
+        If url Is Nothing Then Return ""
+
+        Dim trimmed = url
+        Const httpPrefix As String = "http://"
+        If trimmed.StartsWith(httpPrefix, StringComparison.OrdinalIgnoreCase) Then
+            trimmed = trimmed.Substring(httpPrefix.Length)
+        End If
+
+        Const apiSuffix As String = "/web/api/floating"
+        If trimmed.EndsWith(apiSuffix, StringComparison.OrdinalIgnoreCase) Then
+            trimmed = trimmed.Substring(0, trimmed.Length - apiSuffix.Length)
+        End If
+
+        Return trimmed
+    End Function
+
     Private Function BuildServerUrl(rawAddress As String) As String
         Dim addr = If(rawAddress, "").Trim()
+        If addr = "" Then Return Nothing
+
+        ' Typing/pasting a full URL (e.g. "http://172.16.20.77:8080", possibly with
+        ' the "/web/api/floating" path already on it, since that's exactly the
+        ' internal format this same address gets saved/displayed in) is a completely
+        ' natural thing to do -- without stripping this first, splitting on the first
+        ' ":" below would parse "http" as the host and mangle the port entirely,
+        ' silently building a URL that can never connect and reporting the server as
+        ' unreachable even though it's fine. Strip scheme, any path, and a trailing
+        ' slash so both the bare "host:port" and a full pasted URL resolve the same.
+        Const httpPrefix As String = "http://"
+        Const httpsPrefix As String = "https://"
+        If addr.StartsWith(httpsPrefix, StringComparison.OrdinalIgnoreCase) Then
+            addr = addr.Substring(httpsPrefix.Length)
+        ElseIf addr.StartsWith(httpPrefix, StringComparison.OrdinalIgnoreCase) Then
+            addr = addr.Substring(httpPrefix.Length)
+        End If
+
+        Dim slashIndex = addr.IndexOf("/"c)
+        If slashIndex >= 0 Then addr = addr.Substring(0, slashIndex)
+        addr = addr.Trim()
         If addr = "" Then Return Nothing
 
         Dim host As String
@@ -465,15 +978,16 @@ Public Module LicenseManager
     End Function
 
     ''' <summary>
-    ''' Activates a floating license by License Key alone (the Uid shown in
-    ''' FloatingLicenseServer's grid) against the given server address, with no
-    ''' .lic file needed at all. Saves both so every future launch checks out
-    ''' the same way (see CheckLicenseDetailed).
+    ''' Activates a floating license by Activation Code alone -- the single code an
+    ''' admin sets on Network License Manager and distributes to every tool, covering
+    ''' whatever products are currently loaded there -- against the given server
+    ''' address, with no .lic file needed at all. Saves both so every future launch
+    ''' checks out the same way (see CheckLicenseDetailed).
     ''' </summary>
     Public Function ActivateWithKey(rawUid As String, serverAddress As String, ByRef message As String) As Boolean
         Dim uid = If(rawUid, "").Trim()
         If uid = "" Then
-            message = "Enter the License Key shown in FloatingLicenseServer."
+            message = "Enter the Activation Code shown in Network License Manager."
             Return False
         End If
 
@@ -486,26 +1000,50 @@ Public Module LicenseManager
         SaveServerUrlOverride(url)
         SaveActivatedUid(uid)
 
-        Dim result = FloatingCheckoutDetailed(uid, GenerateLicenseCode())
+        ' FloatingCheckoutDetailed reads the server address from the shared _serverUrl
+        ' field, not a parameter -- without this, the very first Activate click in a
+        ' fresh process posts to a bare "/checkout.php" with no host at all (relative
+        ' URI, no BaseAddress on the HttpClient), which throws and gets caught as
+        ' ServerUnreachable regardless of what was typed or how well it parsed. Every
+        ' other caller of FloatingCheckoutDetailed (CheckLicenseDetailed's floating
+        ' branches) already sets this first; this was the one path that didn't.
+        _serverUrl = url
+
+        Dim result = FloatingCheckoutDetailed(uid, GenerateLicenseCode(), isActivationCode:=True)
+        LastActivationError = result
         If result = LicenseError.None Then
+            ClearActivationPending()
             message = "Activated successfully."
             Return True
         End If
 
-        ' Only a genuinely wrong key should un-stick the saved activation --
-        ' NoSeatsAvailable/ServerUnreachable are transient and should keep
-        ' retrying on the next launch, same as a normal floating .lic would.
-        If result = LicenseError.InvalidLicense Then ClearActivatedUid()
+        ' Only a genuinely wrong code should un-stick the saved activation --
+        ' NoSeatsAvailable/ServerUnreachable are transient, and ProductNotLicensed/
+        ' AmbiguousCustomer mean the code itself was right but the server side isn't
+        ' ready yet -- all should keep retrying on the next launch instead of forcing
+        ' re-entry of a code the user already typed correctly. Since the code was
+        ' accepted and saved despite the failure, flag it so the app can surface a
+        ' "License activated successfully" message the moment a later retry finally
+        ' gets a seat -- otherwise that first success is silent (see IsActivationPending).
+        If result = LicenseError.InvalidLicense Then
+            ClearActivatedUid()
+        Else
+            SetActivationPending()
+        End If
 
         Select Case result
             Case LicenseError.NoSeatsAvailable
                 message = $"No seats available ({LastSeatsInUse}/{LastSeatsMax} in use)."
             Case LicenseError.InvalidLicense
-                message = "The server does not recognise this License Key."
+                message = "The server does not recognise this Activation Code."
             Case LicenseError.ServerUnreachable
                 message = $"Could not reach a license server at {url}."
             Case LicenseError.WrongProduct
-                message = "This License Key was issued for a different Adroitec product."
+                message = "This Activation Code was issued for a different Adroitec product."
+            Case LicenseError.ProductNotLicensed
+                message = "This server doesn't have a license for this product loaded yet -- contact your admin."
+            Case LicenseError.AmbiguousCustomer
+                message = "This server has licenses loaded for more than one customer -- contact your admin."
             Case Else
                 message = $"Activation failed ({result})."
         End Select
@@ -515,6 +1053,27 @@ Public Module LicenseManager
     Private Sub SaveActivatedUid(uid As String)
         Using k = Registry.CurrentUser.CreateSubKey(SettingsRegPath)
             k.SetValue("ActivatedFloatingUid", uid)
+        End Using
+    End Sub
+
+    Private Sub SetActivationPending()
+        Using k = Registry.CurrentUser.CreateSubKey(SettingsRegPath)
+            k.SetValue("ActivationPendingConfirmation", "True")
+        End Using
+    End Sub
+
+    ''' <summary>True if a floating activation was accepted and saved but never got a
+    ''' confirmed seat -- the caller should show a one-time success message the moment
+    ''' CheckLicense() next succeeds, then call ClearActivationPending().</summary>
+    Public Function IsActivationPending() As Boolean
+        Using k = Registry.CurrentUser.OpenSubKey(SettingsRegPath)
+            Return If(k IsNot Nothing, TryCast(k.GetValue("ActivationPendingConfirmation"), String), Nothing) = "True"
+        End Using
+    End Function
+
+    Public Sub ClearActivationPending()
+        Using k = Registry.CurrentUser.OpenSubKey(SettingsRegPath, writable:=True)
+            k?.DeleteValue("ActivationPendingConfirmation", throwOnMissingValue:=False)
         End Using
     End Sub
 
@@ -539,6 +1098,12 @@ Public Module LicenseManager
             Return k IsNot Nothing AndAlso k.GetValue(id) IsNot Nothing
         End Using
     End Function
+
+    Private Sub MarkLicenseUsed(id As String)
+        Using k = Registry.CurrentUser.CreateSubKey(UsedLicensesRegPath)
+            k.SetValue(id, DateTime.Now.ToString("s"))
+        End Using
+    End Sub
 
     ' =====================================================
     ' CRYPTO

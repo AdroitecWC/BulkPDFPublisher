@@ -768,19 +768,27 @@
               Unchecked="ToggleTheme_Unchecked"
               Style="{StaticResource ToggleButtonStyle}"
               ToolTip="Toggle Theme"/>
+                    <!-- License Button -->
+                    <Button Width="40" Height="40"
+            ToolTip="License Management"
+            Command="{Binding OpenLicenseSettingsWindowCommand}"
+            Style="{StaticResource IconButtonStyle}"
+            Foreground="{DynamicResource ForegroundColor}"
+            FontSize="20"
+            Padding="8"
+            Margin="0,0,6,0"
+            Content="🔑"/>
+
                     <!-- Settings Button -->
                     <Button Width="40" Height="40"
             ToolTip="Open export and application settings"
             Command="{Binding OpenSettingsWindowCommand}"
             Style="{StaticResource IconButtonStyle}"
+            Background="#E8E8E8"
             Padding="8"
             Margin="0,0,6,0"
             Click="Button_Click_1">
-                        <Image Source="pack://application:,,,/Resources/gear.png" Width="28" Height="24">
-                            <Image.Effect>
-                                <DropShadowEffect Color="White" BlurRadius="5" ShadowDepth="0" Opacity="0.7"/>
-                            </Image.Effect>
-                        </Image>
+                        <Image Source="pack://application:,,,/Resources/gear.png" Width="28" Height="24"/>
 
                     </Button>
 

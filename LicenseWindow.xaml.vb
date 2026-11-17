@@ -12,6 +12,13 @@ Namespace CreoPublisherApp
             InitializeComponent()
             txtSystemName.Text = Environment.MachineName
             txtRequestCode.Text = requestCode
+            txtToolName.Text = LicenseManager.AppProduct
+            Title = $"{LicenseManager.AppProduct} — License Activation"
+
+            ' Pre-fill the last server address used (if any) -- Change License clears the
+            ' saved override, and this field otherwise starts blank every time, forcing a
+            ' blind retype where a typo/blank entry looks exactly like the server being down.
+            txtNetworkServer.Text = LicenseManager.GetLastServerAddress()
 
             ' Show expiry date if already licensed
             If LicenseManager.CheckLicense() Then
@@ -42,6 +49,28 @@ Namespace CreoPublisherApp
             End If
         End Sub
 
+        ''' <summary>
+        ''' Shown whenever a floating checkout can't reach the NLM -- during
+        ''' activation itself, not just on a later launch of an already-configured
+        ''' install. Yes leaves the window open so the user can enter a different
+        ''' license/server; No closes without activating.
+        ''' </summary>
+        Private Sub ShowServerUnavailablePrompt()
+            Dim attemptedUrl = LicenseManager.LastServerUrl
+            Dim urlLine = If(attemptedUrl = "", "", vbCrLf & $"Address tried: {attemptedUrl}" & vbCrLf)
+
+            Dim answer = MessageBox.Show(
+                "Network License Manager is not available." & vbCrLf &
+                "The Network License Manager could not be reached — it may be offline, or the server address/port may be wrong." & vbCrLf &
+                urlLine & vbCrLf &
+                "Click Yes to change the license, or No to close.",
+                "Network License Manager Not Available", MessageBoxButton.YesNo, MessageBoxImage.Warning)
+            If answer = MessageBoxResult.No Then
+                DialogResult = False
+                Close()
+            End If
+        End Sub
+
         Private Sub btnActivate_Click(sender As Object, e As RoutedEventArgs)
             Dim licenseKey = txtLicenseKey.Text.Trim()
             If licenseKey <> "" Then
@@ -51,6 +80,8 @@ Namespace CreoPublisherApp
                     MessageBox.Show(keyMessage, "Success", MessageBoxButton.OK, MessageBoxImage.Information)
                     DialogResult = True
                     Close()
+                ElseIf LicenseManager.LastActivationError = LicenseManager.LicenseError.ServerUnreachable Then
+                    ShowServerUnavailablePrompt()
                 Else
                     MessageBox.Show(keyMessage, "Activation Failed", MessageBoxButton.OK, MessageBoxImage.Error)
                 End If
@@ -82,14 +113,7 @@ Namespace CreoPublisherApp
                         Close()
 
                     Case LicenseManager.LicenseError.ServerUnreachable
-                        MessageBox.Show(
-                            "Floating license file copied successfully." & vbCrLf & vbCrLf &
-                            "However, the license server could not be reached." & vbCrLf &
-                            "Make sure the FloatingLicenseServer is running on the server machine and the port is correct." & vbCrLf & vbCrLf &
-                            "The license file has been saved — the app will work once the server is reachable.",
-                            "Server Unreachable", MessageBoxButton.OK, MessageBoxImage.Exclamation)
-                        DialogResult = True
-                        Close()
+                        ShowServerUnavailablePrompt()
 
                     Case LicenseManager.LicenseError.NoSeatsAvailable
                         MessageBox.Show(
@@ -140,7 +164,7 @@ Namespace CreoPublisherApp
         Private Sub btnConnectServer_Click(sender As Object, e As RoutedEventArgs)
             Dim address = txtNetworkServer.Text.Trim()
             If address = "" Then
-                MessageBox.Show("Enter a server address, e.g. vizserver:1122.", "Network License Server",
+                MessageBox.Show("Enter a server address, e.g. vizserver:1122.", "Host Name",
                         MessageBoxButton.OK, MessageBoxImage.Exclamation)
                 Return
             End If
