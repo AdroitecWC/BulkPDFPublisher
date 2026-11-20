@@ -520,7 +520,8 @@ Namespace CreoPublisherApp.ViewModels
                 RefreshFilter()
 
             Catch ex As Exception
-                Log &= $"Error loading files from folder: {ex.Message}{Environment.NewLine}"
+                ErrorLogger.LogException($"Load files from folder: {_inputPath}", ex)
+                Log &= $"Error loading files from folder: {ErrorLogger.FormatBrief(ex)} (details: {ErrorLogger.LogFilePath}){Environment.NewLine}"
             End Try
         End Sub
 
@@ -539,7 +540,8 @@ Namespace CreoPublisherApp.ViewModels
                         uniqueFiles.Add(file)
                     End If
                 Catch ex As Exception
-                    Log &= $"Error processing file {System.IO.Path.GetFileName(file)}: {ex.Message}{Environment.NewLine}"
+                    ErrorLogger.LogException($"Hash/deduplicate file: {file}", ex)
+                    Log &= $"Error processing file {System.IO.Path.GetFileName(file)}: {ErrorLogger.FormatBrief(ex)}{Environment.NewLine}"
                 End Try
             Next
 
@@ -556,7 +558,8 @@ Namespace CreoPublisherApp.ViewModels
                     End If
                     hashSet.Add(hash)
                 Catch ex As Exception
-                    Log &= $"Error hashing file {System.IO.Path.GetFileName(path)}: {ex.Message}{Environment.NewLine}"
+                    ErrorLogger.LogException($"Hash file: {path}", ex)
+                    Log &= $"Error hashing file {System.IO.Path.GetFileName(path)}: {ErrorLogger.FormatBrief(ex)}{Environment.NewLine}"
                 End Try
             Next
             Return False
@@ -654,7 +657,7 @@ Namespace CreoPublisherApp.ViewModels
 
         Private Sub InvertSelectionFiles()
             For Each f As FileItemModel In _filteredFilesView
-                f.IsSelected = Not f.IsSelected 
+                f.IsSelected = Not f.IsSelected
             Next
             UpdateFilesCountText()
             OnPropertyChanged(NameOf(Files))
@@ -684,7 +687,7 @@ Namespace CreoPublisherApp.ViewModels
                 For Each file In selectedFiles
                     Dim pdfName As String = If(String.IsNullOrWhiteSpace(file.CustomPdfName),
                            Path.GetFileNameWithoutExtension(file.FileName),
-                           Path.GetFileNameWithoutExtension(file.CustomPdfName))
+                           Path.GetFileNameWithoutExtension(file.CustomPdfName)).ToUpperInvariant()
 
                     Dim pdfPath As String = Path.Combine(OutputPath, pdfName & ".pdf")
 
@@ -873,7 +876,8 @@ Namespace CreoPublisherApp.ViewModels
                 UpdateCounts()
                 Log &= $"Total files added from drop: {addedFilesCount}{Environment.NewLine}"
             Catch ex As Exception
-                Log &= $"Error adding dropped files: {ex.Message}{Environment.NewLine}"
+                ErrorLogger.LogException("Add dropped files", ex)
+                Log &= $"Error adding dropped files: {ErrorLogger.FormatBrief(ex)} (details: {ErrorLogger.LogFilePath}){Environment.NewLine}"
             End Try
         End Sub
 
@@ -951,7 +955,8 @@ Namespace CreoPublisherApp.ViewModels
                 End If
 
             Catch ex As Exception
-                Log &= $"Error generating report: {ex.Message}{Environment.NewLine}"
+                ErrorLogger.LogException("Generate CSV report", ex)
+                Log &= $"Error generating report: {ErrorLogger.FormatBrief(ex)} (details: {ErrorLogger.LogFilePath}){Environment.NewLine}"
             End Try
 
             CompleteStep(4) ' Mark step 4 as completed
@@ -972,7 +977,8 @@ Namespace CreoPublisherApp.ViewModels
                     MessageBox.Show("No exported report found. Please export the report first.", "Info", MessageBoxButton.OK, MessageBoxImage.Information)
                 End If
             Catch ex As Exception
-                Log &= $"Error opening CSV report: {ex.Message}{Environment.NewLine}"
+                ErrorLogger.LogException("Open CSV report", ex)
+                Log &= $"Error opening CSV report: {ErrorLogger.FormatBrief(ex)}{Environment.NewLine}"
             End Try
         End Sub
         Private Sub UpdateWorkingDirectory(directoryPath As String)
@@ -986,7 +992,8 @@ Namespace CreoPublisherApp.ViewModels
 
                 Log &= $"Working directory updated to: {directoryPath}{Environment.NewLine}"
             Catch ex As Exception
-                Log &= $"Error updating working directory: {ex.Message}{Environment.NewLine}"
+                ErrorLogger.LogException($"Update working directory: {directoryPath}", ex)
+                Log &= $"Error updating working directory: {ErrorLogger.FormatBrief(ex)}{Environment.NewLine}"
             End Try
         End Sub
         Public Sub CompleteStep(stepNumber As Integer)
@@ -1008,7 +1015,41 @@ Namespace CreoPublisherApp.ViewModels
                     .UseShellExecute = True
                 })
             Catch ex As Exception
-                Log &= $"Could not open report: {ex.Message}{Environment.NewLine}"
+                ErrorLogger.LogException("Open report file", ex)
+                Log &= $"Could not open report: {ErrorLogger.FormatBrief(ex)}{Environment.NewLine}"
+            End Try
+        End Sub
+
+        ' ---------- Error log access ----------
+        Public ReadOnly Property ErrorLogPath As String
+            Get
+                Return ErrorLogger.LogFilePath
+            End Get
+        End Property
+
+        Private _openErrorLogCommand As ICommand
+        Public Property OpenErrorLogCommand As ICommand
+            Get
+                If _openErrorLogCommand Is Nothing Then
+                    _openErrorLogCommand = New RelayCommand(AddressOf OpenErrorLogExecute)
+                End If
+                Return _openErrorLogCommand
+            End Get
+            Set(value As ICommand)
+                _openErrorLogCommand = value
+            End Set
+        End Property
+
+        Private Sub OpenErrorLogExecute(obj As Object)
+            Try
+                Dim path = ErrorLogger.LogFilePath
+                If Not File.Exists(path) Then
+                    File.WriteAllText(path, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] No errors have been logged yet.{Environment.NewLine}")
+                End If
+                Process.Start(New ProcessStartInfo(path) With {.UseShellExecute = True})
+            Catch ex As Exception
+                MessageBox.Show("Could not open the error log: " & ex.Message, "Error",
+                                MessageBoxButton.OK, MessageBoxImage.Error)
             End Try
         End Sub
 

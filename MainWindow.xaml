@@ -724,6 +724,14 @@
                                     </Style>
                                 </Button.Style>
                             </Button>
+                            <Button Content="📄 Open Error Log"
+                                    Command="{Binding OpenErrorLogCommand}"
+                                    ToolTip="{Binding ErrorLogPath}"
+                                    Margin="0,6,0,0"
+                                    HorizontalAlignment="Stretch"
+                                    FontSize="14"
+                                    Padding="12,8"
+                                    Style="{StaticResource SecondaryButtonStyle}"/>
                         </StackPanel>
                     </Border>
                 </StackPanel>

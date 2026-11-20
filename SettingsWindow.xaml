@@ -21,6 +21,49 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="HasDropShadow" Value="True"/>
         </Style>
+
+        <!-- Rounded Button Style -->
+        <Style x:Key="RoundedButtonStyle" TargetType="Button">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8"
+                                Padding="15,8">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.85"/>
+                                <Setter TargetName="border" Property="Effect">
+                                    <Setter.Value>
+                                        <DropShadowEffect Color="Black"
+                                                          BlurRadius="10"
+                                                          ShadowDepth="2"
+                                                          Opacity="0.3"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.7"/>
+                                <Setter TargetName="border" Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.98" ScaleY="0.98"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -181,32 +224,38 @@
 
             <Button Content="Save"
                     Width="80"
+                    Height="36"
                     Margin="0,0,10,0"
                     Command="{Binding SaveCommand}"
                     Background="#27ae60"
                     Foreground="White"
                     BorderBrush="#1e8449"
                     BorderThickness="1"
-                    Cursor="Hand"/>
+                    Cursor="Hand"
+                    Style="{StaticResource RoundedButtonStyle}"/>
 
             <Button Content="Cancel"
                     Width="80"
+                    Height="36"
                     Margin="0,0,10,0"
                     Command="{Binding CancelCommand}"
                     Background="#95a5a6"
                     Foreground="White"
                     BorderBrush="#7f8c8d"
                     BorderThickness="1"
-                    Cursor="Hand"/>
+                    Cursor="Hand"
+                    Style="{StaticResource RoundedButtonStyle}"/>
 
             <Button Content="OK"
                     Width="80"
+                    Height="36"
                     Command="{Binding ConfirmCommand}"
                     Background="#2980b9"
                     Foreground="White"
                     BorderBrush="#2471a3"
                     BorderThickness="1"
-                    Cursor="Hand"/>
+                    Cursor="Hand"
+                    Style="{StaticResource RoundedButtonStyle}"/>
         </StackPanel>
 
     </Grid>

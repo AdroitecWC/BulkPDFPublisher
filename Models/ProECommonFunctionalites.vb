@@ -26,6 +26,7 @@ Public Class ProECommonFunctionalites
                 Dim workingDir = SettingsManager.Instance.WorkingDirectory
                 ' Validate directory
                 If String.IsNullOrWhiteSpace(workingDir) Then
+                    ErrorLogger.LogMessage("Creo", "Working directory is not set.")
                     MessageBox.Show("Working directory is not set. Please set it in Settings.", "Error", MessageBoxButton.OK, MessageBoxImage.Error)
                     Exit Sub
                 End If
@@ -34,7 +35,10 @@ Public Class ProECommonFunctionalites
                     Try
                         System.IO.Directory.CreateDirectory(workingDir)
                     Catch ex As Exception
-                        MessageBox.Show("Unable to create working directory: " & ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error)
+                        ErrorLogger.LogException($"Create working directory: {workingDir}", ex)
+                        MessageBox.Show("Unable to create working directory: " & ex.Message & vbCrLf & vbCrLf &
+                                        "Details written to:" & vbCrLf & ErrorLogger.LogFilePath,
+                                        "Error", MessageBoxButton.OK, MessageBoxImage.Error)
                         Exit Sub
                     End Try
                 End If
@@ -46,7 +50,10 @@ Public Class ProECommonFunctionalites
                 Try
                     session.ChangeDirectory(workingDir)
                 Catch ex As Exception
-                    MessageBox.Show("Failed to change Creo directory: " & ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error)
+                    ErrorLogger.LogException($"Change Creo working directory: {workingDir}", ex)
+                    MessageBox.Show("Failed to change Creo directory: " & ErrorLogger.FormatBrief(ex) & vbCrLf & vbCrLf &
+                                    "Details written to:" & vbCrLf & ErrorLogger.LogFilePath,
+                                    "Error", MessageBoxButton.OK, MessageBoxImage.Error)
                     Exit Sub
                 End Try
                 Dim desc = (New CCpfcModelDescriptor()).Create(EpfcModelType.EpfcMDL_DRAWING, modelName, Nothing)
@@ -54,11 +61,12 @@ Public Class ProECommonFunctionalites
 
                 If model Is Nothing Then
                     item.Status = "Failed to retrieve"
+                    ErrorLogger.LogMessage("Creo", $"RetrieveModel returned Nothing for '{modelName}' (file: {item.FullPath}).")
                     Continue For
                 End If
 
                 Dim pdfInstr As IpfcPDFExportInstructions = (New CCpfcPDFExportInstructions()).Create()
-                Dim customName = If(String.IsNullOrWhiteSpace(item.CustomPdfName), modelName, item.CustomPdfName)
+                Dim customName = If(String.IsNullOrWhiteSpace(item.CustomPdfName), modelName, item.CustomPdfName).ToUpperInvariant()
                 Dim pdfPath = Path.Combine(outputFolder, customName & ".pdf")
                 pdfInstr.FilePath = pdfPath
 
@@ -71,8 +79,14 @@ Public Class ProECommonFunctionalites
                 opt1.OptionValue = arg1.CreateBoolArgValue(False)
                 pdfOptions.Append(opt1)
 
+                ' Force monochrome color depth
+                Dim pdfOpt2 As New CCpfcPDFOption
+                Dim opt2 As IpfcPDFOption = pdfOpt2.Create()
+                opt2.OptionType = EpfcPDFOptionType.EpfcPDFOPT_COLOR_DEPTH
+                Dim arg2 As New CMpfcArgument
+                opt2.OptionValue = arg2.CreateIntArgValue(CInt(EpfcPDFColorDepth.EpfcPDF_CD_MONO))
+                pdfOptions.Append(opt2)
 
-                pdfInstr.Options = pdfOptions
                 pdfInstr.Options = pdfOptions
 
                 model.Display()
@@ -87,7 +101,8 @@ Public Class ProECommonFunctionalites
                 exportedPdfPaths.Add(pdfPath)
 
             Catch ex As Exception
-                item.Status = "Error: " & ex.Message
+                ErrorLogger.LogException($"Export PDF: {item.FullPath}", ex)
+                item.Status = "Error: " & ErrorLogger.FormatBrief(ex)
             End Try
         Next
         ' Only merge if user requested
@@ -116,7 +131,10 @@ Public Class ProECommonFunctionalites
 
                 End Using
             Catch mergeEx As Exception
-                MessageBox.Show("PDF merge failed: " & mergeEx.Message)
+                ErrorLogger.LogException($"Merge PDFs into MergedDrawings.pdf ({exportedPdfPaths.Count} source files)", mergeEx)
+                MessageBox.Show("PDF merge failed: " & ErrorLogger.FormatBrief(mergeEx) & vbCrLf & vbCrLf &
+                                "Details written to:" & vbCrLf & ErrorLogger.LogFilePath,
+                                "Merge Failed", MessageBoxButton.OK, MessageBoxImage.Error)
             End Try
         End If
 

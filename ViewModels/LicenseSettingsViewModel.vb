@@ -7,23 +7,6 @@ Public Class LicenseSettingsViewModel
     Implements INotifyPropertyChanged
 
     ' -------------------------------
-    ' Floating-license gating
-    ' -------------------------------
-    ' Deactivate/Transfer only make sense for a node-locked license — a floating license
-    ' (whether via a Floating .lic file or an Activation-Code-based activation with no
-    ' .lic file at all) is bound to the license server, not this machine, so the whole
-    ' Deactivate/Transfer choice is hidden and only "Change License" is offered instead.
-    ' IsFloatingConfigured() (not IsFloatingLicense(), which only ever looks at a .lic
-    ' file) is what actually covers both cases.
-    Private ReadOnly _isFloating As Boolean = LicenseManager.IsFloatingConfigured()
-
-    Public ReadOnly Property NodeLockedActionsVisibility As Visibility
-        Get
-            Return If(_isFloating, Visibility.Collapsed, Visibility.Visible)
-        End Get
-    End Property
-
-    ' -------------------------------
     ' License Action Selection
     ' -------------------------------
     Private _isDeactivateSelected As Boolean = True
@@ -81,7 +64,6 @@ Public Class LicenseSettingsViewModel
     Public Property DeactivateLicenseCommand As ICommand
     Public Property TransferLicenseCommand As ICommand
     Public Property PrimaryLicenseActionCommand As ICommand
-    Public Property ChangeLicenseTypeCommand As ICommand
     Public Property CancelCommand As ICommand
     Public Property ConfirmCommand As ICommand
 
@@ -98,7 +80,6 @@ Public Class LicenseSettingsViewModel
         DeactivateLicenseCommand = New RelayCommand(AddressOf DeactivateLicense)
         TransferLicenseCommand = New RelayCommand(AddressOf TransferLicense)
         PrimaryLicenseActionCommand = New RelayCommand(AddressOf ExecutePrimaryLicenseAction)
-        ChangeLicenseTypeCommand = New RelayCommand(AddressOf ChangeLicenseType)
 
         CancelCommand = New RelayCommand(AddressOf Cancel)
         ConfirmCommand = New RelayCommand(AddressOf Confirm)
@@ -170,15 +151,6 @@ Public Class LicenseSettingsViewModel
 
     Private Sub TransferLicense()
 
-        If _isFloating Then
-            MessageBox.Show(
-                "Network licenses cannot be transferred — they are bound to the license server, not this machine.",
-                "Not Available",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information)
-            Return
-        End If
-
         If Not IsTransferSelected Then
             MessageBox.Show(
                 "Please select 'Transfer License' option to proceed.",
@@ -195,25 +167,6 @@ Public Class LicenseSettingsViewModel
         }
 
         win.ShowDialog()
-
-    End Sub
-
-    Private Sub ChangeLicenseType()
-
-        Dim result = MessageBox.Show(
-            "This will clear the current license activation (returning any borrowed/floating seat) and restart the application." &
-            Environment.NewLine & Environment.NewLine &
-            "The activation window will reopen right away so you can activate a new license, node-locked or floating." &
-            Environment.NewLine & Environment.NewLine &
-            "Do you want to continue?",
-            "Change License",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning)
-
-        If result <> MessageBoxResult.Yes Then Return
-
-        LicenseManager.PrepareForLicenseTypeSwitch()
-        RaiseEvent RequestShutdown()
 
     End Sub
 
