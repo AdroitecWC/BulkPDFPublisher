@@ -1,4 +1,5 @@
 ﻿Imports System.IO
+Imports System.Text.RegularExpressions
 Imports System.Security.AccessControl
 Imports PdfSharp.Pdf
 Imports PdfSharp.Pdf.IO
@@ -44,8 +45,6 @@ Public Class ProECommonFunctionalites
                 End If
 
 
-                session.ChangeDirectory(workingDir)
-
                 ' Set Creo's working directory
                 Try
                     session.ChangeDirectory(workingDir)
@@ -56,8 +55,8 @@ Public Class ProECommonFunctionalites
                                     "Error", MessageBoxButton.OK, MessageBoxImage.Error)
                     Exit Sub
                 End Try
-                Dim desc = (New CCpfcModelDescriptor()).Create(EpfcModelType.EpfcMDL_DRAWING, modelName, Nothing)
-                Dim model As IpfcModel = session.RetrieveModel(desc)
+
+                Dim model As IpfcModel = RetrieveDrawing(session, item.FullPath, workingDir)
 
                 If model Is Nothing Then
                     item.Status = "Failed to retrieve"
@@ -89,13 +88,18 @@ Public Class ProECommonFunctionalites
 
                 pdfInstr.Options = pdfOptions
 
+                ' Remove an old copy first, so the wait below can't mistake it for the new PDF.
+                If File.Exists(pdfPath) Then File.Delete(pdfPath)
+
                 model.Display()
                 model.Export(pdfPath, pdfInstr)
 
-                Dim activeWindow As IpfcWindow = session.CurrentWindow
-                If activeWindow IsNot Nothing Then activeWindow.Close()
-
-                session.EraseUndisplayedModels()
+                ' Don't move on to the next drawing until this PDF is fully written.
+                If Not WaitForPdfReady(pdfPath, TimeSpan.FromMinutes(5)) Then
+                    item.Status = "Error: PDF was not created in time"
+                    ErrorLogger.LogMessage("Creo", $"PDF not ready after export: {pdfPath} (file: {item.FullPath}).")
+                    Continue For
+                End If
 
                 item.Status = "Success"
                 exportedPdfPaths.Add(pdfPath)
@@ -103,6 +107,10 @@ Public Class ProECommonFunctionalites
             Catch ex As Exception
                 ErrorLogger.LogException($"Export PDF: {item.FullPath}", ex)
                 item.Status = "Error: " & ErrorLogger.FormatBrief(ex)
+            Finally
+                ' Always clean the session, even after a failure, so this drawing's
+                ' models can't clash with same-named models of the next drawing.
+                CleanUpSession(session)
             End Try
         Next
         ' Only merge if user requested
@@ -140,4 +148,82 @@ Public Class ProECommonFunctionalites
 
 
     End Sub
+
+    ' Creo drawing files on disk can carry a version suffix (name.drw.3); the model
+    ' name Creo expects is just "name".
+    Private Shared Function GetDrawingModelName(filePath As String) As String
+        Dim fileName = Path.GetFileName(filePath)
+        Return Regex.Replace(fileName, "\.drw(\.\d+)?$", "", RegexOptions.IgnoreCase)
+    End Function
+
+    ' Retrieve a drawing from its own folder first (so it and its referenced
+    ' asm/prt/frm files are found next to it), then fall back to the configured
+    ' working directory. Each location is tried twice, since Creo can reject the
+    ' first calls while it is still finishing startup.
+    Private Function RetrieveDrawing(session As IpfcBaseSession, filePath As String, workingDir As String) As IpfcModel
+        Dim modelName = GetDrawingModelName(filePath)
+        Dim folders As New List(Of String)
+        Dim fileFolder = Path.GetDirectoryName(filePath)
+        If Not String.IsNullOrWhiteSpace(fileFolder) Then folders.Add(fileFolder)
+        If Not folders.Any(Function(f) String.Equals(Path.GetFullPath(f).TrimEnd("\"c), Path.GetFullPath(workingDir).TrimEnd("\"c), StringComparison.OrdinalIgnoreCase)) Then
+            folders.Add(workingDir)
+        End If
+
+        Dim lastError As Exception = Nothing
+        For Each folder In folders
+            For attempt = 1 To 2
+                Try
+                    session.ChangeDirectory(folder)
+                    Dim desc = (New CCpfcModelDescriptor()).Create(EpfcModelType.EpfcMDL_DRAWING, modelName, Nothing)
+                    Return session.RetrieveModel(desc)
+                Catch ex As Exception
+                    lastError = ex
+                    ErrorLogger.LogException($"RetrieveModel '{modelName}' from '{folder}' (attempt {attempt})", ex)
+                    CleanUpSession(session)
+                    If attempt = 1 Then System.Threading.Thread.Sleep(2000)
+                End Try
+            Next
+        Next
+        Throw lastError
+    End Function
+
+    ' Close the displayed window and erase everything not displayed. Failures are
+    ' logged but never thrown, so they can't flip a successful export to "Error".
+    Private Sub CleanUpSession(session As IpfcBaseSession)
+        Try
+            Dim activeWindow As IpfcWindow = session.CurrentWindow
+            If activeWindow IsNot Nothing Then activeWindow.Close()
+        Catch ex As Exception
+            ErrorLogger.LogException("Close Creo window", ex)
+        End Try
+        Try
+            session.EraseUndisplayedModels()
+        Catch ex As Exception
+            ErrorLogger.LogException("Erase undisplayed models", ex)
+        End Try
+    End Sub
+
+    ' Wait until the exported PDF exists, has stopped growing, and is no longer
+    ' locked by Creo. Returns False if that doesn't happen within the timeout.
+    Private Shared Function WaitForPdfReady(pdfPath As String, timeout As TimeSpan) As Boolean
+        Dim deadline = DateTime.Now.Add(timeout)
+        Dim lastSize As Long = -1
+        Do While DateTime.Now < deadline
+            If File.Exists(pdfPath) Then
+                Dim size = New FileInfo(pdfPath).Length
+                If size > 0 AndAlso size = lastSize Then
+                    Try
+                        Using File.Open(pdfPath, FileMode.Open, FileAccess.Read, FileShare.None)
+                        End Using
+                        Return True
+                    Catch ex As IOException
+                        ' Still being written; keep waiting.
+                    End Try
+                End If
+                lastSize = size
+            End If
+            System.Threading.Thread.Sleep(500)
+        Loop
+        Return False
+    End Function
 End Class
