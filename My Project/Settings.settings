@@ -38,5 +38,8 @@
     <Setting Name="WatermarkColor" Type="System.String" Scope="User">
       <Value Profile="(Default)">Gray</Value>
     </Setting>
+    <Setting Name="SearchProPath" Type="System.String" Scope="User">
+      <Value Profile="(Default)" />
+    </Setting>
   </Settings>
 </SettingsFile>

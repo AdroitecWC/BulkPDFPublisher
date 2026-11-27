@@ -1,4 +1,5 @@
-﻿Imports System.ComponentModel
+﻿Imports System.Collections.ObjectModel
+Imports System.ComponentModel
 Imports System.IO
 Imports System.Runtime.CompilerServices
 Imports System.Windows
@@ -36,6 +37,27 @@ Public Class SettingsWindowViewModel
         Set(value As String)
             If _workingDirectory <> value Then
                 _workingDirectory = value
+                OnPropertyChanged()
+            End If
+        End Set
+    End Property
+
+    Private _searchProFiles As New ObservableCollection(Of String)
+    Private _originalSearchProPath As String
+    Public ReadOnly Property SearchProFiles As ObservableCollection(Of String)
+        Get
+            Return _searchProFiles
+        End Get
+    End Property
+
+    Private _selectedSearchProFile As String
+    Public Property SelectedSearchProFile As String
+        Get
+            Return _selectedSearchProFile
+        End Get
+        Set(value As String)
+            If _selectedSearchProFile <> value Then
+                _selectedSearchProFile = value
                 OnPropertyChanged()
             End If
         End Set
@@ -141,6 +163,8 @@ Public Class SettingsWindowViewModel
     ' -------------------------------
     Public Property BrowseCommand As ICommand
     Public Property BrowseWorkingDirectoryCommand As ICommand
+    Public Property AddSearchProCommand As ICommand
+    Public Property RemoveSearchProCommand As ICommand
     Public Property SaveCommand As ICommand
     Public Property CancelCommand As ICommand
     Public Property ConfirmCommand As ICommand
@@ -152,11 +176,15 @@ Public Class SettingsWindowViewModel
 
     Public Sub New()
         ' Load settings from SettingsManager
-        _creoPath = SettingsManager.Instance.CreoPath
+        Dim envCreoPath = OpenProeObjectClass.ResolveCreoPath(Environment.GetEnvironmentVariable("PROE_PATH", EnvironmentVariableTarget.Machine))
+        _creoPath = If(Not String.IsNullOrEmpty(envCreoPath) AndAlso File.Exists(envCreoPath), envCreoPath, SettingsManager.Instance.CreoPath)
         _originalCreoPath = _creoPath
 
         _workingDirectory = SettingsManager.Instance.WorkingDirectory
         _originalWorkingDirectory = _workingDirectory
+
+        _originalSearchProPath = SettingsManager.Instance.SearchProPath
+        LoadSearchProFiles(_originalSearchProPath)
 
         _watermarkText = SettingsManager.Instance.WatermarkText
         _watermarkOpacity = SettingsManager.Instance.WatermarkOpacity
@@ -168,6 +196,8 @@ Public Class SettingsWindowViewModel
         ' Initialize commands
         BrowseCommand = New RelayCommand(AddressOf Browse)
         BrowseWorkingDirectoryCommand = New RelayCommand(AddressOf BrowseWorkingDirectory)
+        AddSearchProCommand = New RelayCommand(AddressOf AddSearchPro)
+        RemoveSearchProCommand = New RelayCommand(AddressOf RemoveSearchPro)
         SaveCommand = New RelayCommand(AddressOf Save)
         CancelCommand = New RelayCommand(AddressOf Cancel)
         ConfirmCommand = New RelayCommand(AddressOf Confirm)
@@ -185,6 +215,42 @@ Public Class SettingsWindowViewModel
         If dlg.ShowDialog() = True Then
             CreoPath = dlg.FileName.Trim().Trim(""""c)
         End If
+    End Sub
+
+    ' -------------------------------
+    ' Search.pro list management
+    ' -------------------------------
+    Private Sub AddSearchPro()
+        Dim dlg As New OpenFileDialog()
+        dlg.Filter = "Creo Search Path File (search.pro)|search.pro|Pro/E Files (*.pro)|*.pro"
+        dlg.Title = "Select search.pro file"
+        dlg.Multiselect = True
+        If dlg.ShowDialog() = True Then
+            For Each path In dlg.FileNames
+                Dim cleaned = path.Trim().Trim(""""c)
+                If Not _searchProFiles.Contains(cleaned) Then
+                    _searchProFiles.Add(cleaned)
+                End If
+            Next
+        End If
+    End Sub
+
+    Private Sub RemoveSearchPro()
+        If Not String.IsNullOrEmpty(SelectedSearchProFile) Then
+            _searchProFiles.Remove(SelectedSearchProFile)
+            SelectedSearchProFile = Nothing
+        End If
+    End Sub
+
+    Private Sub LoadSearchProFiles(semicolonSeparated As String)
+        _searchProFiles.Clear()
+        If String.IsNullOrWhiteSpace(semicolonSeparated) Then Return
+        For Each path In semicolonSeparated.Split(";"c)
+            Dim cleaned = path.Trim()
+            If Not String.IsNullOrEmpty(cleaned) Then
+                _searchProFiles.Add(cleaned)
+            End If
+        Next
     End Sub
 
     ' -------------------------------
@@ -228,6 +294,7 @@ Public Class SettingsWindowViewModel
     Private Sub SaveSettings()
         SettingsManager.Instance.CreoPath = CreoPath
         SettingsManager.Instance.WorkingDirectory = WorkingDirectory
+        SettingsManager.Instance.SearchProPath = String.Join(";", _searchProFiles)
         SettingsManager.Instance.WatermarkText = WatermarkText
         SettingsManager.Instance.WatermarkOpacity = WatermarkOpacity
         SettingsManager.Instance.WatermarkFontSize = WatermarkFontSize
@@ -240,6 +307,7 @@ Public Class SettingsWindowViewModel
 
         _originalCreoPath = CreoPath
         _originalWorkingDirectory = WorkingDirectory
+        _originalSearchProPath = SettingsManager.Instance.SearchProPath
     End Sub
 
     ' -------------------------------
@@ -248,6 +316,7 @@ Public Class SettingsWindowViewModel
     Private Sub Cancel()
         CreoPath = _originalCreoPath
         WorkingDirectory = _originalWorkingDirectory
+        LoadSearchProFiles(_originalSearchProPath)
         RaiseEvent RequestClose()
     End Sub
 

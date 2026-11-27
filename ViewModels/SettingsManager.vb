@@ -3,6 +3,7 @@
 
     Public Property CreoPath As String
     Public Property WorkingDirectory As String
+    Public Property SearchProPath As String
     ' New Watermark Settings
     Public Property WatermarkText As String
     Public Property WatermarkOpacity As Double
@@ -15,6 +16,7 @@
     Private Sub New()
         CreoPath = My.Settings.CreoPath
         WorkingDirectory = My.Settings.WorkingDirectory
+        SearchProPath = My.Settings.SearchProPath
         ' Defaults
         WatermarkText = "CONFIDENTIAL"
         WatermarkOpacity = 0.3
@@ -35,6 +37,7 @@
     Public Sub Save()
         My.Settings.CreoPath = CreoPath
         My.Settings.WorkingDirectory = WorkingDirectory
+        My.Settings.SearchProPath = SearchProPath
         My.Settings.WatermarkText = WatermarkText
         My.Settings.WatermarkOpacity = WatermarkOpacity
         My.Settings.WatermarkFontSize = WatermarkFontSize

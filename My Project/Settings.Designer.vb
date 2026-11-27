@@ -197,6 +197,18 @@ Namespace My
                 Me("WatermarkColor") = value
             End Set
         End Property
+
+        <Global.System.Configuration.UserScopedSettingAttribute(),  _
+         Global.System.Diagnostics.DebuggerNonUserCodeAttribute(),  _
+         Global.System.Configuration.DefaultSettingValueAttribute("")>  _
+        Public Property SearchProPath() As String
+            Get
+                Return CType(Me("SearchProPath"),String)
+            End Get
+            Set
+                Me("SearchProPath") = value
+            End Set
+        End Property
     End Class
 End Namespace
 

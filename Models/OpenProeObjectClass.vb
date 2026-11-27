@@ -28,6 +28,19 @@ Public Class OpenProeObjectClass
         End Try
     End Function
 
+    Public Shared Function ResolveCreoPath(path As String) As String
+        If String.IsNullOrEmpty(path) Then Return path
+        If Not path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase) Then Return path
+        Try
+            Dim shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell"))
+            Dim shortcut = shell.GetType().InvokeMember("CreateShortcut", Reflection.BindingFlags.InvokeMethod, Nothing, shell, New Object() {path})
+            Dim target = CStr(shortcut.GetType().InvokeMember("TargetPath", Reflection.BindingFlags.GetProperty, Nothing, shortcut, Nothing))
+            Return If(Not String.IsNullOrEmpty(target), target, path)
+        Catch
+            Return path
+        End Try
+    End Function
+
     Public Sub KillCreO()
         Dim proc As System.Diagnostics.Process
         Try

@@ -464,7 +464,6 @@ Namespace CreoPublisherApp.ViewModels
             If dialog.ShowDialog() = True Then
                 InputPath = dialog.SelectedPath
                 LoadFilesFromFolder(InputPath)
-
             End If
         End Sub
 
@@ -505,8 +504,8 @@ Namespace CreoPublisherApp.ViewModels
             Where(Function(f) Regex.IsMatch(System.IO.Path.GetFileName(f), "\.drw(\.\d+)?$", RegexOptions.IgnoreCase)).
             ToList()
 
-                ' Remove duplicates by content hash
-                Dim uniqueFiles = RemoveDuplicateFiles(filesInFolder)
+                ' Per drawing name keep only the latest iteration (highest version number)
+                Dim uniqueFiles = KeepLatestIterations(filesInFolder)
 
                 ' Load remaining files
                 For Each filePath In uniqueFiles
@@ -525,54 +524,106 @@ Namespace CreoPublisherApp.ViewModels
             End Try
         End Sub
 
-        Private Function RemoveDuplicateFiles(filePaths As List(Of String)) As List(Of String)
-            Dim seenHashes As New HashSet(Of String)
-            Dim uniqueFiles As New List(Of String)
-
-            For Each file In filePaths
-                Try
-                    Dim hash = ComputeFileHash(file)
-                    If seenHashes.Contains(hash) Then
-                        ' Duplicate — delete it
-                        System.IO.File.Delete(file)
-                    Else
-                        seenHashes.Add(hash)
-                        uniqueFiles.Add(file)
-                    End If
-                Catch ex As Exception
-                    ErrorLogger.LogException($"Hash/deduplicate file: {file}", ex)
-                    Log &= $"Error processing file {System.IO.Path.GetFileName(file)}: {ErrorLogger.FormatBrief(ex)}{Environment.NewLine}"
-                End Try
-            Next
-
-            Return uniqueFiles
+        ' Groups files by drawing base name and returns only the highest iteration of each.
+        ' e.g. bracket.drw.1, bracket.drw.2, bracket.drw.3 → bracket.drw.3
+        ' Files without a version suffix (bracket.drw) are treated as iteration 0
+        ' and kept only when no numbered version exists for that drawing.
+        Private Function KeepLatestIterations(filePaths As List(Of String)) As List(Of String)
+            Return filePaths.
+                GroupBy(Function(f)
+                            Regex.Replace(Path.GetFileName(f), "\.drw(\.\d+)?$", "", RegexOptions.IgnoreCase).ToLowerInvariant()
+                        End Function).
+                Select(Function(g)
+                           Return g.OrderByDescending(Function(f)
+                                                          Dim m = Regex.Match(Path.GetFileName(f), "\.drw\.(\d+)$", RegexOptions.IgnoreCase)
+                                                          Return If(m.Success, Integer.Parse(m.Groups(1).Value), 0)
+                                                      End Function).First()
+                       End Function).
+                ToList()
         End Function
 
-        Private Function HasDuplicateFiles(filePaths As String()) As Boolean
-            Dim hashSet As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
-            For Each path In filePaths
-                Try
-                    Dim hash = ComputeFileHash(path)
-                    If hashSet.Contains(hash) Then
-                        Return True ' Duplicate found
-                    End If
-                    hashSet.Add(hash)
-                Catch ex As Exception
-                    ErrorLogger.LogException($"Hash file: {path}", ex)
-                    Log &= $"Error hashing file {System.IO.Path.GetFileName(path)}: {ErrorLogger.FormatBrief(ex)}{Environment.NewLine}"
-                End Try
-            Next
-            Return False
-        End Function
+        ' Validates whether a file exists and can be opened for reading.
+        ' Logs the outcome and returns True if the file is accessible, False otherwise.
+        Private Function ValidateFileAccess(filePath As String) As Boolean
+            Try
+                If Not File.Exists(filePath) Then
+                    Log &= $"FILE CHECK: File does not exist: {filePath}{Environment.NewLine}"
+                    Return False
+                End If
 
-        Private Function ComputeFileHash(filePath As String) As String
-            Using sha256 = Security.Cryptography.SHA256.Create()
-                Using stream = File.OpenRead(filePath)
-                    Dim hashBytes = sha256.ComputeHash(stream)
-                    Return BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant()
+                Log &= $"FILE CHECK: File exists - {filePath}{Environment.NewLine}"
+
+                Using fs As New FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite)
+                    Log &= $"FILE ACCESS: Read access successful ({Path.GetFileName(filePath)}){Environment.NewLine}"
+                    Log &= $"FILE SIZE: {fs.Length} bytes{Environment.NewLine}"
                 End Using
-            End Using
+
+                ' ---------- Blocking / locking checks ----------
+                Dim attrs = File.GetAttributes(filePath)
+
+                If (attrs And FileAttributes.ReadOnly) = FileAttributes.ReadOnly Then
+                    Log &= $"FILE ATTRIBUTE: Read-only flag is set - {Path.GetFileName(filePath)}{Environment.NewLine}"
+                End If
+
+                ' Exclusive-lock probe: if another process (Creo, Explorer preview, etc.) holds the file, this throws.
+                Try
+                    Using fsLock As New FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.None)
+                        ' Acquired exclusive handle — file is not locked.
+                    End Using
+                Catch lockEx As IOException
+                    Log &= $"FILE LOCK: File appears to be in use by another process - {Path.GetFileName(filePath)} ({lockEx.Message}){Environment.NewLine}"
+                End Try
+
+                ' Mark-of-the-Web (Zone.Identifier alternate data stream) - Creo may block files downloaded from the internet.
+                If File.Exists(filePath & ":Zone.Identifier") Then
+                    Log &= $"FILE ZONE: Mark-of-the-Web detected (downloaded from internet) - {Path.GetFileName(filePath)}{Environment.NewLine}"
+                End If
+
+                ' ---------- Path / location hazards ----------
+                If filePath.Length > 248 Then
+                    Log &= $"PATH LENGTH: Path is {filePath.Length} chars (>248); Creo may fail to open long paths - {filePath}{Environment.NewLine}"
+                End If
+
+                If filePath.Any(Function(c) AscW(c) > 127) Then
+                    Log &= $"PATH ENCODING: Path contains non-ASCII characters - {filePath}{Environment.NewLine}"
+                End If
+
+                Try
+                    Dim root = Path.GetPathRoot(filePath)
+                    If filePath.StartsWith("\\") Then
+                        Log &= $"PATH LOCATION: UNC network path - {root}{Environment.NewLine}"
+                    ElseIf Not String.IsNullOrEmpty(root) Then
+                        Dim di As New DriveInfo(root)
+                        Select Case di.DriveType
+                            Case DriveType.Network
+                                Log &= $"PATH LOCATION: Network drive ({root}){Environment.NewLine}"
+                            Case DriveType.Removable
+                                Log &= $"PATH LOCATION: Removable drive ({root}){Environment.NewLine}"
+                            Case DriveType.CDRom
+                                Log &= $"PATH LOCATION: CD/DVD drive ({root}) - read-only media{Environment.NewLine}"
+                        End Select
+                    End If
+                Catch driveEx As Exception
+                    Log &= $"PATH LOCATION: Could not determine drive type - {driveEx.Message}{Environment.NewLine}"
+                End Try
+
+                Return True
+
+            Catch ex As UnauthorizedAccessException
+                ErrorLogger.LogException($"Validate file access: {filePath}", ex)
+                Log &= $"FILE ACCESS DENIED: {ex.Message}{Environment.NewLine}"
+                Return False
+            Catch ex As IOException
+                ErrorLogger.LogException($"Validate file access: {filePath}", ex)
+                Log &= $"FILE IO ERROR: {ex.Message}{Environment.NewLine}"
+                Return False
+            Catch ex As Exception
+                ErrorLogger.LogException($"Validate file access: {filePath}", ex)
+                Log &= $"FILE CHECK ERROR: {ex.Message}{Environment.NewLine}"
+                Return False
+            End Try
         End Function
+
 
         Private Sub UpdateFilesCountText()
             Dim selectedCount = _files.Where(Function(f) f.IsSelected).Count()
@@ -738,11 +789,39 @@ Namespace CreoPublisherApp.ViewModels
                 End If
                 'Log &= $"Starting Creo launch and export for {selectedFiles.Count} files..." & Environment.NewLine
                 'Command to export only selected files.
+                ' Validate file accessibility before export
+                Dim inaccessibleFiles As New List(Of FileItemModel)
+                For Each file In filesToExport
+                    If Not ValidateFileAccess(file.FullPath) Then
+                        file.Status = "Error: File not accessible."
+                        inaccessibleFiles.Add(file)
+                    End If
+                Next
+                If inaccessibleFiles.Any() Then
+                    For Each f In inaccessibleFiles
+                        filesToExport.Remove(f)
+                    Next
+                    MessageBox.Show("The following files are not accessible and will be skipped:" & vbCrLf &
+                                    String.Join(vbCrLf, inaccessibleFiles.Select(Function(f) f.FileName)),
+                                    "Inaccessible Files", MessageBoxButton.OK, MessageBoxImage.Warning)
+                End If
+                If filesToExport.Count = 0 Then
+                    Log &= "No accessible files to publish." & Environment.NewLine
+                    Return
+                End If
+
                 Log &= $"Starting Creo launch and export for {filesToExport.Count} files..." & Environment.NewLine
 
                 'Opening the working directory and creo executable path
                 Dim workingDir = SettingsManager.Instance.WorkingDirectory
-                Dim savedCreoPath = My.Settings.CreoPath
+                Dim envLnkPath = Environment.GetEnvironmentVariable("PROE_PATH", EnvironmentVariableTarget.Machine)
+                Dim savedCreoPath = OpenProeObjectClass.ResolveCreoPath(envLnkPath)
+                If Not String.IsNullOrEmpty(savedCreoPath) AndAlso File.Exists(savedCreoPath) Then
+                    Log &= $"Creo path resolved from PROE_PATH shortcut: {envLnkPath} → {savedCreoPath}{Environment.NewLine}"
+                Else
+                    savedCreoPath = My.Settings.CreoPath
+                    Log &= $"Creo path taken from Settings: {savedCreoPath}{Environment.NewLine}"
+                End If
                 If String.IsNullOrEmpty(savedCreoPath) OrElse Not File.Exists(savedCreoPath) Then
                     MessageBox.Show("Invalid or missing Creo executable path. Please set it in Settings.")
                     Log &= "Invalid or missing Creo path." & Environment.NewLine
@@ -767,6 +846,22 @@ Namespace CreoPublisherApp.ViewModels
                 _proeCommonFuncs.setConfigOption("display_planes", "no")
                 _proeCommonFuncs.setConfigOption("display_axes", "no")
                 _proeCommonFuncs.setConfigOption("display_coord_sys", "no")
+
+                Dim searchProPaths = SettingsManager.Instance.SearchProPath
+                If Not String.IsNullOrWhiteSpace(searchProPaths) Then
+                    For Each proFile In searchProPaths.Split(";"c).Select(Function(s) s.Trim()).Where(Function(s) s.Length > 0 AndAlso File.Exists(s))
+                        For Each line In File.ReadAllLines(proFile)
+                            Dim m = Regex.Match(line.Trim(), "^search_path\s+(.+)$", RegexOptions.IgnoreCase)
+                            If m.Success Then
+                                Dim dir = m.Groups(1).Value.Trim()
+                                If Directory.Exists(dir) Then
+                                    _proeCommonFuncs.setConfigOption("search_path", dir)
+                                    Log &= $"Search path added: {dir}{Environment.NewLine}"
+                                End If
+                            End If
+                        Next
+                    Next
+                End If
                 ' Ask user about single vs. multiple PDF export
 
                 _proeCommonFuncs.ExportAllDrawingsAsPDF(filesToExport, OutputPath, IsMergeEnabled)
@@ -938,6 +1033,16 @@ Namespace CreoPublisherApp.ViewModels
                     Dim failCount = totalFiles - successCount
                     writer.WriteLine(New String("-"c, 80))
                     writer.WriteLine($"Summary, Total Files: {totalFiles}, Success: {successCount}, Failed: {failCount}")
+                    writer.WriteLine(New String("-"c, 80))
+
+                    ' ==== PUBLISHING LOG ====
+                    writer.WriteLine()
+                    writer.WriteLine("Publishing Log")
+                    writer.WriteLine(New String("-"c, 80))
+                    For Each logLine In _log.Split({Environment.NewLine}, StringSplitOptions.None)
+                        Dim escaped = logLine.Replace("""", """""")
+                        writer.WriteLine("""" & escaped & """")
+                    Next
                     writer.WriteLine(New String("-"c, 80))
                 End Using
 
