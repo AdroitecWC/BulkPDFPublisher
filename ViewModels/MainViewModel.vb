@@ -531,7 +531,7 @@ Namespace CreoPublisherApp.ViewModels
         Private Function KeepLatestIterations(filePaths As List(Of String)) As List(Of String)
             Return filePaths.
                 GroupBy(Function(f)
-                            Regex.Replace(Path.GetFileName(f), "\.drw(\.\d+)?$", "", RegexOptions.IgnoreCase).ToLowerInvariant()
+                            Return Regex.Replace(Path.GetFileName(f), "\.drw(\.\d+)?$", "", RegexOptions.IgnoreCase).ToLowerInvariant()
                         End Function).
                 Select(Function(g)
                            Return g.OrderByDescending(Function(f)
